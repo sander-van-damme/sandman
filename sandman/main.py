@@ -1,14 +1,16 @@
 """Sandman entry point — wires the tray, monitor, settings and LLM together.
 
 The tray (pystray) runs on the main thread, the monitor polls on a
-background thread, and any tkinter UI (settings, reply chat) is created
-ad-hoc by scheduling work back onto the main thread via a small task
-queue that the tray polls while running.
+background thread, and a dedicated UI thread owns a persistent hidden
+tkinter root and drives the event loop for every window (settings,
+chat, overlays). Other threads schedule work on the UI thread via the
+``_ui_call`` queue which is drained from within ``mainloop``.
 """
 
 from __future__ import annotations
 
 import logging
+import platform
 import queue
 import sys
 import threading
@@ -67,39 +69,112 @@ class SandmanApp:
             on_quit=self._on_quit,
         )
 
-        # Tasks that must execute on the tkinter/main thread.
+        # Tasks that must execute on the Tk UI thread.
         self._ui_queue: queue.Queue[Callable[[], Any]] = queue.Queue()
         self._reply_window: ReplyWindow | None = None
+        self._tk_root: Any = None  # tk.Tk, lazily created on the UI thread
+        self._ui_ready = threading.Event()
+        self._ui_scale: float = 1.0
         self._stopping = False
 
-    # ---- main-thread task pump -----------------------------------------
+    # ---- UI thread task pump -------------------------------------------
 
     def _ui_call(self, func: Callable[[], Any]) -> None:
-        """Schedule ``func`` to run on the main thread."""
+        """Schedule ``func`` to run on the Tk UI thread."""
         self._ui_queue.put(func)
 
     def _ui_pump(self) -> None:
-        """Called periodically from a tiny helper thread to drain the UI queue.
+        """Own a persistent hidden Tk root and run its mainloop.
 
-        We can't easily inject into pystray's event loop, so instead we run
-        a lightweight dispatcher thread that sleeps on the queue and then
-        spawns the Tk work on *itself* — tkinter will create a new thread-
-        local root as needed. For longer-lived windows (settings/chat) this
-        is acceptable since tkinter tolerates being driven from a single
-        consistent worker thread.
+        All windows (settings, chat, escalation overlay) are Toplevels
+        parented to this hidden root so a single event loop drives the
+        whole UI. Work scheduled via ``_ui_call`` from other threads is
+        drained from within the event loop via ``after`` polling, which
+        means tkinter calls always happen on this one thread.
         """
-        import time
+        import tkinter as tk
 
-        while not self._stopping:
+        # Per-monitor DPI awareness so tkinter renders crisp on high-DPI
+        # displays. Must be set before any Tk window is created. No-op
+        # off Windows.
+        if platform.system() == "Windows":
             try:
-                task = self._ui_queue.get(timeout=0.25)
-            except queue.Empty:
-                continue
-            try:
-                task()
+                import ctypes
+
+                try:
+                    # PROCESS_PER_MONITOR_DPI_AWARE (Win 8.1+)
+                    ctypes.windll.shcore.SetProcessDpiAwareness(2)
+                except Exception:
+                    ctypes.windll.user32.SetProcessDPIAware()
             except Exception:
-                log.exception("UI task failed")
-            time.sleep(0.05)
+                log.debug("Could not enable DPI awareness", exc_info=True)
+
+        try:
+            root = tk.Tk()
+        except Exception:
+            log.exception("Failed to create Tk root — UI disabled")
+            self._ui_ready.set()
+            return
+
+        root.withdraw()
+
+        # Scale Tk (fonts, ttk widgets) to display DPI. ``winfo_fpixels``
+        # returns pixels per inch — Tk's native scaling unit is 1/72".
+        try:
+            dpi = float(root.winfo_fpixels("1i"))
+            if dpi > 0:
+                root.tk.call("tk", "scaling", dpi / 72.0)
+                self._ui_scale = max(1.0, dpi / 96.0)
+        except Exception:
+            self._ui_scale = 1.0
+
+        # Prefer the native Windows theme for ttk widgets; it's faster
+        # and matches the rest of the OS.
+        try:
+            from tkinter import ttk
+
+            style = ttk.Style(root)
+            for theme in ("vista", "xpnative", "winnative", "clam"):
+                if theme in style.theme_names():
+                    style.theme_use(theme)
+                    break
+        except Exception:
+            log.debug("Could not set ttk theme", exc_info=True)
+
+        self._tk_root = root
+        self._ui_ready.set()
+
+        def _drain() -> None:
+            if self._stopping:
+                try:
+                    root.quit()
+                except Exception:
+                    pass
+                return
+            try:
+                while True:
+                    task = self._ui_queue.get_nowait()
+                    try:
+                        task()
+                    except Exception:
+                        log.exception("UI task failed")
+            except queue.Empty:
+                pass
+            try:
+                root.after(50, _drain)
+            except tk.TclError:
+                pass
+
+        root.after(50, _drain)
+
+        try:
+            root.mainloop()
+        finally:
+            try:
+                root.destroy()
+            except Exception:
+                pass
+            self._tk_root = None
 
     # ---- monitor callbacks ---------------------------------------------
 
@@ -150,13 +225,21 @@ class SandmanApp:
             log.info("Settings saved — applied to live config")
 
         window = SettingsWindow(
-            self.config, aw_client=self.aw_client, on_saved=_on_saved
+            self.config,
+            aw_client=self.aw_client,
+            on_saved=_on_saved,
+            parent=self._tk_root,
+            ui_scale=self._ui_scale,
         )
         window.open()
 
     def _open_chat(self) -> None:
         if self._reply_window is None:
-            self._reply_window = ReplyWindow(on_user_reply=self._handle_chat_reply)
+            self._reply_window = ReplyWindow(
+                on_user_reply=self._handle_chat_reply,
+                parent=self._tk_root,
+                ui_scale=self._ui_scale,
+            )
         self._reply_window.open(
             initial_sandman_message=(
                 "Hey — I'm here. Tell me what's keeping you up."
@@ -175,22 +258,24 @@ class SandmanApp:
         """Full-screen-ish overlay for high nudge counts."""
         import tkinter as tk
 
+        if self._tk_root is None:
+            return
         try:
-            root = tk.Tk()
-            root.attributes("-topmost", True)
-            root.attributes("-alpha", 0.85)
-            root.overrideredirect(True)
-            sw = root.winfo_screenwidth()
-            sh = root.winfo_screenheight()
+            overlay = tk.Toplevel(self._tk_root)
+            overlay.attributes("-topmost", True)
+            overlay.attributes("-alpha", 0.85)
+            overlay.overrideredirect(True)
+            sw = overlay.winfo_screenwidth()
+            sh = overlay.winfo_screenheight()
             w = int(sw * 0.5)
             h = int(sh * 0.3)
             x = (sw - w) // 2
             y = (sh - h) // 2
-            root.geometry(f"{w}x{h}+{x}+{y}")
-            root.configure(bg="#101018")
+            overlay.geometry(f"{w}x{h}+{x}+{y}")
+            overlay.configure(bg="#101018")
 
             label = tk.Label(
-                root,
+                overlay,
                 text=message,
                 wraplength=w - 40,
                 fg="#ffffff",
@@ -201,9 +286,9 @@ class SandmanApp:
             label.pack(expand=True, fill="both", padx=20, pady=20)
 
             btn = tk.Button(
-                root,
+                overlay,
                 text="OK, I'll go to bed",
-                command=root.destroy,
+                command=overlay.destroy,
                 bg="#2a2a3a",
                 fg="#ffffff",
                 bd=0,
@@ -211,7 +296,6 @@ class SandmanApp:
                 pady=8,
             )
             btn.pack(pady=(0, 20))
-            root.mainloop()
         except Exception:
             log.exception("Failed to show escalation overlay")
 
@@ -221,6 +305,16 @@ class SandmanApp:
         _setup_logging()
         log.info("Starting Sandman")
 
+        # Start UI thread first so the Tk root exists before anything
+        # tries to open a window on it.
+        ui_thread = threading.Thread(
+            target=self._ui_pump, name="sandman-ui", daemon=True
+        )
+        ui_thread.start()
+        # Wait briefly for the Tk root to come up so the first UI call
+        # doesn't race ahead of it.
+        self._ui_ready.wait(timeout=5.0)
+
         # First-run: open settings if no API key yet.
         if not self.config.is_configured():
             log.info("No API key configured — opening settings on first run")
@@ -229,18 +323,14 @@ class SandmanApp:
         # Start monitor thread.
         self.monitor.start()
 
-        # Start UI task pump thread.
-        ui_thread = threading.Thread(
-            target=self._ui_pump, name="sandman-ui", daemon=True
-        )
-        ui_thread.start()
-
         # Tray takes over the main thread until Quit.
         try:
             self.tray.run()
         finally:
             self._stopping = True
             self.monitor.stop()
+            # Give the UI thread a chance to tear down its Tk root.
+            ui_thread.join(timeout=2.0)
             log.info("Sandman exited")
         return 0
 

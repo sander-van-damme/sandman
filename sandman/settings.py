@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import tkinter as tk
 import webbrowser
 from tkinter import messagebox, ttk
@@ -49,13 +50,18 @@ class SettingsWindow:
         aw_client: ActivityWatchClient | None = None,
         on_saved: Callable[[Config], None] | None = None,
         parent: tk.Misc | None = None,
+        ui_scale: float = 1.0,
     ) -> None:
         self.config = config
         self.aw_client = aw_client or ActivityWatchClient()
         self.on_saved = on_saved
         self._parent = parent
+        self._ui_scale = max(1.0, float(ui_scale))
         self._root: tk.Toplevel | tk.Tk | None = None
         self._owns_root = False
+        self._aw_status_lock = threading.Lock()
+        self._aw_status_pending = False
+        self._aw_status_last: bool | None = None
 
         # Tk variables — created in ``open``.
         self.var_api_key: tk.StringVar | None = None
@@ -85,8 +91,14 @@ class SettingsWindow:
 
         root = self._root
         root.title("Sandman — Settings")
-        root.geometry("480x640")
+        w = int(480 * self._ui_scale)
+        h = int(640 * self._ui_scale)
+        root.geometry(f"{w}x{h}")
         root.resizable(False, False)
+        try:
+            root.transient(self._parent) if self._parent is not None else None
+        except tk.TclError:
+            pass
 
         self._init_vars()
 
@@ -313,16 +325,66 @@ class SettingsWindow:
     # ---- actions --------------------------------------------------------
 
     def _refresh_aw_status(self) -> None:
+        """Kick off an async availability check; UI updates on completion.
+
+        We can't call ``is_available`` inline: it does a blocking HTTP
+        request (up to 3s) on what is now the shared Tk thread, which
+        would freeze every window. Instead we run the probe on a short-
+        lived worker and post the result back through ``after``.
+        """
         if self._aw_status_label is None:
             return
-        ok = False
-        try:
-            ok = self.aw_client.is_available()
-        except Exception:
+        # Show the last known result immediately (or a neutral state).
+        if self._aw_status_last is not None:
+            self._render_aw_status(self._aw_status_last)
+        elif self._aw_status_label is not None:
+            self._aw_status_label.configure(
+                text="Status: Checking...", foreground="#666666"
+            )
+
+        with self._aw_status_lock:
+            if self._aw_status_pending:
+                return
+            self._aw_status_pending = True
+
+        def _probe() -> None:
             ok = False
+            try:
+                ok = self.aw_client.is_available()
+            except Exception:
+                ok = False
+            root = self._root
+            if root is None:
+                with self._aw_status_lock:
+                    self._aw_status_pending = False
+                return
+            try:
+                root.after(0, lambda ok=ok: self._on_aw_status_result(ok))
+            except tk.TclError:
+                with self._aw_status_lock:
+                    self._aw_status_pending = False
+
+        threading.Thread(
+            target=_probe, name="sandman-aw-probe", daemon=True
+        ).start()
+
+    def _on_aw_status_result(self, ok: bool) -> None:
+        with self._aw_status_lock:
+            self._aw_status_pending = False
+        self._aw_status_last = ok
+        self._render_aw_status(ok)
+
+    def _render_aw_status(self, ok: bool) -> None:
+        if self._aw_status_label is None:
+            return
         text = "Connected ✓" if ok else "Not detected ✗"
         color = "#2a7a2a" if ok else "#a02020"
-        self._aw_status_label.configure(text=f"Status: {text}", foreground=color)
+        try:
+            self._aw_status_label.configure(
+                text=f"Status: {text}", foreground=color
+            )
+        except tk.TclError:
+            pass
 
     def _schedule_aw_refresh(self) -> None:
         if self._root is None:
