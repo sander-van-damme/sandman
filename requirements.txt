@@ -1,0 +1,7 @@
+pystray>=0.19
+Pillow>=10.0
+pywin32>=306; sys_platform == 'win32'
+psutil>=5.9
+win11toast>=0.34; sys_platform == 'win32'
+openai>=1.30
+requests>=2.31
