@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sandman"
+version = "0.1.1"
+description = "Bedtime nudge app for Windows — LLM-powered reminders to go to sleep"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Sander van Damme" }]
+dependencies = [
+    "pystray>=0.19",
+    "Pillow>=10.0",
+    "psutil>=5.9",
+    "openai>=1.30",
+    "requests>=2.31",
+    'pywin32>=306; sys_platform == "win32"',
+    'win11toast>=0.34; sys_platform == "win32"',
+]
+
+[project.scripts]
+sandman = "sandman.main:main"
+
+[tool.setuptools.packages.find]
+include = ["sandman*"]
+
+[tool.setuptools.package-data]
+sandman = ["assets/*.ico", "assets/*.png"]
