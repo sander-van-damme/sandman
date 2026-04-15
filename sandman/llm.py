@@ -119,7 +119,7 @@ class LLMClient:
     for headless tests).
     """
 
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini") -> None:
+    def __init__(self, api_key: str, model: str = "gpt-5-nano") -> None:
         self.api_key = api_key
         self.model = model
         self._client: Any = None

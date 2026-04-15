@@ -25,7 +25,7 @@ It doesn't just block apps. It recognizes "you're deep in a coding session at
    window and the AFK state.
 2. If you're inside your active window, not paused, not AFK, not just woken
    up, and not rate-limited — Sandman sends the current activity to
-   `gpt-4o-mini` along with your preferences and the session's nudge count.
+   `gpt-5-nano` along with your preferences and the session's nudge count.
 3. The model decides whether a nudge is warranted (booking an Uber at 11pm
    is fine; the third hour of doomscrolling is not) and returns a message
    matching your chosen style.
@@ -43,7 +43,7 @@ It doesn't just block apps. It recognizes "you're deep in a coding session at
 - An [OpenAI API key](https://platform.openai.com/api-keys)
 
 At typical usage (~48 nudges per night, 30 nights/month) the OpenAI cost is
-well under $0.10/month using `gpt-4o-mini`.
+well under $0.10/month using `gpt-5-nano`.
 
 ## Install & run
 
@@ -72,7 +72,7 @@ Settings live at `~/.sandman/config.json` (created on first run). Schema:
 ```json
 {
   "openai_api_key": "sk-...",
-  "model": "gpt-4o-mini",
+  "model": "gpt-5-nano",
   "schedule": {
     "active_from": "21:30",
     "active_until": "02:00",
