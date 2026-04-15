@@ -33,7 +33,7 @@ jobs:
             --name=Sandman `
             --icon=sandman/assets/icon_active.ico `
             --add-data "sandman/assets;sandman/assets" `
-            sandman/main.py
+            __main__.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
