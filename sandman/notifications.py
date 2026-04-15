@@ -117,12 +117,14 @@ class ReplyWindow:
         *,
         on_user_reply: Callable[[str], None],
         parent: tk.Misc | None = None,
+        ui_scale: float = 1.0,
     ) -> None:
         self._on_user_reply = on_user_reply
         self._parent = parent
+        self._ui_scale = max(1.0, float(ui_scale))
         self._root: tk.Toplevel | tk.Tk | None = None
         self._transcript: tk.Text | None = None
-        self._entry: tk.Entry | None = None
+        self._entry: ttk.Entry | None = None
         self._incoming: queue.Queue[tuple[str, str]] = queue.Queue()
         self._lock = threading.Lock()
 
@@ -153,8 +155,12 @@ class ReplyWindow:
             self._owns_root = False
             self._hidden_root = None  # type: ignore[assignment]
 
+        w = int(320 * self._ui_scale)
+        h = int(440 * self._ui_scale)
+
         top.title("Sandman")
-        top.geometry("300x400")
+        top.geometry(f"{w}x{h}")
+        top.minsize(int(260 * self._ui_scale), int(320 * self._ui_scale))
         top.attributes("-topmost", True)
         top.protocol("WM_DELETE_WINDOW", self.close)
 
@@ -162,12 +168,23 @@ class ReplyWindow:
         top.update_idletasks()
         sw = top.winfo_screenwidth()
         sh = top.winfo_screenheight()
-        x = max(0, sw - 320)
-        y = max(0, sh - 460)
-        top.geometry(f"300x400+{x}+{y}")
+        x = max(0, sw - w - 20)
+        y = max(0, sh - h - 60)
+        top.geometry(f"{w}x{h}+{x}+{y}")
+
+        # Container so we can rely on grid for a clean bottom-entry layout.
+        container = ttk.Frame(top)
+        container.pack(fill="both", expand=True)
+        container.rowconfigure(0, weight=1)
+        container.columnconfigure(0, weight=1)
+
+        transcript_frame = ttk.Frame(container)
+        transcript_frame.grid(row=0, column=0, sticky="nsew", padx=6, pady=(6, 0))
+        transcript_frame.rowconfigure(0, weight=1)
+        transcript_frame.columnconfigure(0, weight=1)
 
         transcript = tk.Text(
-            top,
+            transcript_frame,
             wrap="word",
             state="disabled",
             bg="#1e1e2f",
@@ -176,6 +193,7 @@ class ReplyWindow:
             pady=8,
             bd=0,
             highlightthickness=0,
+            font=("Segoe UI", 10),
         )
         transcript.tag_configure(
             "sandman",
@@ -189,15 +207,25 @@ class ReplyWindow:
             foreground="#ffd6a5",
             spacing3=4,
         )
-        transcript.pack(fill="both", expand=True, padx=6, pady=(6, 0))
+        transcript.grid(row=0, column=0, sticky="nsew")
 
-        entry_frame = ttk.Frame(top)
-        entry_frame.pack(fill="x", padx=6, pady=6)
-        entry = tk.Entry(entry_frame)
-        entry.pack(side="left", fill="x", expand=True)
+        scrollbar = ttk.Scrollbar(
+            transcript_frame, orient="vertical", command=transcript.yview
+        )
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        transcript.configure(yscrollcommand=scrollbar.set)
+
+        entry_frame = ttk.Frame(container)
+        entry_frame.grid(row=1, column=0, sticky="ew", padx=6, pady=6)
+        entry_frame.columnconfigure(0, weight=1)
+        entry = ttk.Entry(entry_frame)
+        entry.grid(row=0, column=0, sticky="ew")
         entry.bind("<Return>", lambda _e: self._send_from_entry())
-        send_btn = ttk.Button(entry_frame, text="Send", command=self._send_from_entry)
-        send_btn.pack(side="left", padx=(6, 0))
+        send_btn = ttk.Button(
+            entry_frame, text="Send", command=self._send_from_entry
+        )
+        send_btn.grid(row=0, column=1, padx=(6, 0))
+        entry.focus_set()
 
         self._root = top
         self._transcript = transcript
