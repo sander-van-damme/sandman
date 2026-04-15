@@ -47,6 +47,19 @@ well under $0.10/month using `gpt-5-nano`.
 
 ## Install & run
 
+The easiest way is to grab **`Sandman-Setup-<version>.exe`** from the
+[latest release](https://github.com/sander-van-damme/sandman/releases/latest)
+and run it. The installer:
+
+- Places `Sandman.exe` in `%LOCALAPPDATA%\Programs\Sandman` (no admin
+  required — choose *Install for all users* in the UAC prompt if you'd
+  rather put it under `Program Files` instead).
+- Adds a Start Menu entry.
+- Offers optional Desktop shortcut and "Start with Windows" checkboxes.
+- Registers a proper uninstaller in *Apps & features*.
+
+Prefer to run from source?
+
 ```bash
 pip install -r requirements.txt
 python -m sandman.main
@@ -56,14 +69,23 @@ On first launch with no configured API key, the Settings window opens
 automatically. Paste your OpenAI key, set your wind-down hours, and save.
 Sandman will sit in the system tray until it's time.
 
-## Building a standalone .exe
+## Building locally
 
 ```bat
 pip install pyinstaller
 build.bat
 ```
 
-This produces `dist/Sandman.exe` — a single-file windowed app.
+This produces:
+
+- `dist\Sandman.exe` — a single-file windowed app.
+- `installer\Sandman-Setup-<version>.exe` — the Windows installer
+  (only if [Inno Setup 6](https://jrsoftware.org/isinfo.php) is
+  installed; otherwise the installer step is skipped).
+
+Tagged pushes (`git tag v0.1.2 && git push --tags`) trigger
+`.github/workflows/build.yml`, which builds both artifacts on a Windows
+runner and attaches them to a GitHub Release.
 
 ## Configuration
 
