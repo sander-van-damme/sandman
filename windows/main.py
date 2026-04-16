@@ -263,7 +263,6 @@ class SandmanApp:
         if self._reply_window is None:
             self._reply_window = ReplyWindow(
                 on_user_reply=self._handle_chat_reply,
-                on_bed_clicked=self._handle_bed_clicked,
                 parent=self._tk_root,
                 ui_scale=self._ui_scale,
             )
@@ -277,12 +276,6 @@ class SandmanApp:
                 )
             )
         )
-
-    def _handle_bed_clicked(self) -> None:
-        self.monitor.record_notification_response("I'm going to bed")
-        self.monitor.pause_until_tomorrow()
-        if self._reply_window is not None:
-            self._reply_window.close()
 
     def _handle_chat_reply(self, text: str) -> None:
         log.info("User reply: %s", text)

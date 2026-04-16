@@ -1,10 +1,4 @@
-"""Tkinter-based nudge popup and reply chat UI.
-
-The nudge popup appears in the center of the screen, stays on top, and
-contains two interaction paths:
-1) a clear "I'm going to bed" commitment button
-2) a chat input box for free-form replies/negotiation
-"""
+"""Tkinter-based nudge popup and reply chat UI."""
 
 from __future__ import annotations
 
@@ -22,7 +16,7 @@ log = logging.getLogger(__name__)
 
 
 class ReplyWindow:
-    """Elegant always-on-top popup with commitment button + chat.
+    """Elegant always-on-top popup with chat.
 
     Designed to run on the main thread (tkinter's requirement). To send a
     reply from another thread, push a message onto the queue via
@@ -38,12 +32,10 @@ class ReplyWindow:
         self,
         *,
         on_user_reply: Callable[[str], None],
-        on_bed_clicked: Callable[[], None],
         parent: tk.Misc | None = None,
         ui_scale: float = 1.0,
     ) -> None:
         self._on_user_reply = on_user_reply
-        self._on_bed_clicked = on_bed_clicked
         self._parent = parent
         self._ui_scale = max(1.0, float(ui_scale))
         self._root: tk.Toplevel | tk.Tk | None = None
@@ -239,14 +231,6 @@ class ReplyWindow:
             style="Nudge.Subtitle.TLabel",
         )
         subtitle.grid(row=1, column=0, sticky="w", pady=(4, 0))
-        bed_btn = ttk.Button(
-            header,
-            text="🌙 I'm going to bed",
-            command=self._bed_clicked,
-            style="Nudge.TButton",
-        )
-        bed_btn.grid(row=0, column=1, rowspan=2, sticky="e")
-
         transcript_frame = ttk.Frame(card, style="Nudge.Compose.TFrame")
         transcript_frame.grid(row=1, column=0, sticky="nsew", pady=(0, 10))
         transcript_frame.rowconfigure(0, weight=1)
@@ -382,12 +366,6 @@ class ReplyWindow:
 
         threading.Thread(target=_send, daemon=True).start()
 
-    def _bed_clicked(self) -> None:
-        try:
-            self._on_bed_clicked()
-        except Exception:
-            log.exception("on_bed_clicked handler failed")
-
     def _append(self, role: str, message: str) -> None:
         if self._transcript is None:
             return
@@ -424,8 +402,8 @@ class ReplyWindow:
             return
         self._transcript.configure(state="normal")
         if self._typing_index is None:
-            self._typing_index = self._transcript.index(tk.END)
-            self._transcript.insert(tk.END, "Sandman is typing.\n\n", "sandman")
+            self._typing_index = self._transcript.index("end-1c")
+            self._transcript.insert("end-1c", "Sandman is typing.\n\n", "sandman")
         self._transcript.see(tk.END)
         self._transcript.configure(state="disabled")
         self._typing_job_id = self._root.after(350, self._animate_typing_indicator)
