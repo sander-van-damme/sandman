@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Sandman</string>
+
+    <!-- Notification channels -->
+    <string name="channel_nudge_name">Bedtime Nudges</string>
+    <string name="channel_nudge_desc">Sandman nudges to help you get to bed on time</string>
+    <string name="channel_status_name">Sandman Status</string>
+    <string name="channel_status_desc">Persistent indicator that Sandman is monitoring</string>
+
+    <!-- Notification actions -->
+    <string name="action_reply">Reply</string>
+    <string name="action_bed">Going to bed</string>
+    <string name="action_snooze">5 more minutes</string>
+    <string name="reply_hint">Reply to Sandman…</string>
+</resources>
