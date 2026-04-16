@@ -85,6 +85,7 @@ def show_nudge_toast(
             log.exception("Toast action callback failed")
 
     try:
+        log.info("Sending win11toast: %r", message[:120] if message else "")
         toast(
             title,
             message,
@@ -92,6 +93,7 @@ def show_nudge_toast(
             on_click=_callback,
             duration="long",  # keeps it in Action Center
         )
+        log.info("Toast displayed successfully")
     except Exception as exc:  # pragma: no cover - toast runtime
         log.warning("Failed to show toast: %s", exc)
 
@@ -258,6 +260,7 @@ class ReplyWindow:
 
     def queue_sandman_message(self, message: str) -> None:
         """Enqueue a message from Sandman. Safe to call from any thread."""
+        log.info("Queuing sandman message for chat window: %r", message[:120] if message else "")
         self._incoming.put(("sandman", message))
 
     def queue_user_message(self, message: str) -> None:
