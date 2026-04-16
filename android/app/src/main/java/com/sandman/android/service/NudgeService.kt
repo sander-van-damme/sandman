@@ -231,7 +231,8 @@ class NudgeService : Service() {
         val nudgeStyle = prefs.nudgeStyle.first()
         val minutesPast = minutesPastBedtime(now.hour, now.minute, activeFrom)
 
-        val systemPrompt = LlmClient.buildSystemPrompt(
+        val systemPrompt = LlmClient.buildSystemPrompt()
+        val turnContext = LlmClient.buildTurnContextMessage(
             now = now,
             bedtime = activeFrom,
             wakeTime = wakeTime,
@@ -245,6 +246,7 @@ class NudgeService : Service() {
         val decision = llmClient!!.classifyAndNudge(
             systemPrompt = systemPrompt,
             history = history,
+            userMessage = turnContext,
             nudgeCount = nudgeCount,
         )
 
@@ -283,7 +285,8 @@ class NudgeService : Service() {
         val nudgeStyle = prefs.nudgeStyle.first()
         val minutesPast = minutesPastBedtime(now.hour, now.minute, activeFrom)
 
-        val systemPrompt = LlmClient.buildSystemPrompt(
+        val systemPrompt = LlmClient.buildSystemPrompt()
+        val turnContext = LlmClient.buildTurnContextMessage(
             now = now,
             bedtime = activeFrom,
             wakeTime = wakeTime,
@@ -292,17 +295,17 @@ class NudgeService : Service() {
             windowTitle = app?.packageName ?: "",
             nudgeCount = nudgeCount,
             nudgeStyle = nudgeStyle,
+            userReply = text,
         )
-
-        history.add("user", text)
 
         val decision = llmClient!!.classifyAndNudge(
             systemPrompt = systemPrompt,
             history = history,
-            userMessage = text,
+            userMessage = turnContext,
             nudgeCount = nudgeCount,
         )
 
+        history.add("user", text)
         if (decision.message.isNotBlank()) {
             history.add("assistant", decision.message)
 
