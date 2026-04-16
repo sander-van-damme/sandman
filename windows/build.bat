@@ -12,9 +12,9 @@ setlocal
 
 pyinstaller --onefile --windowed ^
     --name=Sandman ^
-    --icon=sandman/assets/icon_active.ico ^
-    --add-data "sandman/assets;sandman/assets" ^
-    __main__.py
+    --icon=windows/assets/icon_active.ico ^
+    --add-data "windows/assets;windows/assets" ^
+    windows/__main__.py
 if errorlevel 1 goto :error
 
 echo.
@@ -29,7 +29,7 @@ if not exist "%ISCC%" (
     goto :done
 )
 
-"%ISCC%" installer.iss
+"%ISCC%" windows/installer.iss
 if errorlevel 1 goto :error
 
 echo.

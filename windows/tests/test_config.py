@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from sandman.config import DEFAULT_CONFIG, Config
+from windows.config import DEFAULT_CONFIG, Config
 
 
 def test_load_missing_file_returns_defaults(tmp_path: Path) -> None:

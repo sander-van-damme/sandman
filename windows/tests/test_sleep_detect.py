@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sandman.sleep_detect import SleepDetector
+from windows.sleep_detect import SleepDetector
 
 
 def test_no_wake_on_normal_interval() -> None:

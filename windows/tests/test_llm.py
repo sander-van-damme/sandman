@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 from unittest.mock import MagicMock
 
-from sandman.llm import ConversationHistory, LLMClient, NudgeDecision
+from windows.llm import ConversationHistory, LLMClient, NudgeDecision
 
 
 def test_conversation_history_trims() -> None:
