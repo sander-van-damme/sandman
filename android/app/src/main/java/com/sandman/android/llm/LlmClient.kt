@@ -21,15 +21,6 @@ private const val SYSTEM_PROMPT_TEMPLATE = """You are Sandman, a bedtime coach b
 (BJ Fogg's Behavior Model, habit stacking, commitment devices, implementation \
 intentions). The user has asked you to help them get to bed on time.
 
-Current context:
-- It is %s
-- The user's bedtime goal is %s (they need to wake at %s)
-- They have been active past their wind-down time for %d minutes
-- Current application: %s
-- Current window title: %s
-- Number of nudges sent this session: %d
-- Nudge style preference: %s
-
 Your job:
 1. CLASSIFY what the user is doing (programming, social media, entertainment, \
 communication, productive work, etc.)
@@ -61,6 +52,18 @@ Respond in JSON format:
   "extension_minutes": 0
 }"""
 
+private const val TURN_CONTEXT_TEMPLATE = """Current context (latest only):
+- It is %s
+- The user's bedtime goal is %s (they need to wake at %s)
+- They have been active past their wind-down time for %d minutes
+- Current application: %s
+- Current window title: %s
+- Number of nudges sent this session: %d
+- Nudge style preference: %s
+%s
+
+Return ONLY JSON matching the schema from the system prompt."""
+
 class LlmClient(
     val apiKey: String,
     private val model: String = "gpt-5-nano",
@@ -76,7 +79,9 @@ class LlmClient(
     companion object {
         private val TIME_FMT = DateTimeFormatter.ofPattern("HH:mm")
 
-        fun buildSystemPrompt(
+        fun buildSystemPrompt(): String = SYSTEM_PROMPT_TEMPLATE
+
+        fun buildTurnContextMessage(
             now: LocalDateTime,
             bedtime: String,
             wakeTime: String,
@@ -85,7 +90,8 @@ class LlmClient(
             windowTitle: String,
             nudgeCount: Int,
             nudgeStyle: String,
-        ): String = SYSTEM_PROMPT_TEMPLATE.format(
+            userReply: String? = null,
+        ): String = TURN_CONTEXT_TEMPLATE.format(
             now.format(TIME_FMT),
             bedtime,
             wakeTime,
@@ -94,6 +100,7 @@ class LlmClient(
             windowTitle,
             nudgeCount,
             nudgeStyle,
+            userReply?.let { "\nLatest user reply: $it" } ?: "",
         )
     }
 

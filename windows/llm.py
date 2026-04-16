@@ -16,15 +16,6 @@ You are Sandman, a bedtime coach built on behavioral psychology principles \
 (BJ Fogg's Behavior Model, habit stacking, commitment devices, implementation \
 intentions). The user has asked you to help them get to bed on time.
 
-Current context:
-- It is {current_time}
-- The user's bedtime goal is {bedtime} (they need to wake at {wake_time})
-- They have been active past their wind-down time for {minutes_past} minutes
-- Current application: {app_name}
-- Current window title: {window_title}
-- Number of nudges sent this session: {nudge_count}
-- Nudge style preference: {nudge_style}
-
 Your job:
 1. CLASSIFY what the user is doing (programming, social media, entertainment, \
 communication, productive work, etc.)
@@ -58,6 +49,20 @@ Respond in JSON format:
   "follow_up_question": "optional question to engage the user, e.g. 'What's keeping you going right now?'",
   "extension_minutes": 0
 }}
+"""
+
+TURN_CONTEXT_TEMPLATE = """\
+Current context (latest only):
+- It is {current_time}
+- The user's bedtime goal is {bedtime} (they need to wake at {wake_time})
+- They have been active past their wind-down time for {minutes_past} minutes
+- Current application: {app_name}
+- Current window title: {window_title}
+- Number of nudges sent this session: {nudge_count}
+- Nudge style preference: {nudge_style}
+{user_reply_block}
+
+Return ONLY JSON matching the schema from the system prompt.
 """
 
 
@@ -146,6 +151,11 @@ class LLMClient:
 
     @staticmethod
     def build_system_prompt(
+    ) -> str:
+        return SYSTEM_PROMPT_TEMPLATE
+
+    @staticmethod
+    def build_turn_context_message(
         *,
         now: datetime,
         bedtime: str,
@@ -155,8 +165,12 @@ class LLMClient:
         window_title: str,
         nudge_count: int,
         nudge_style: str,
+        user_reply: str | None = None,
     ) -> str:
-        return SYSTEM_PROMPT_TEMPLATE.format(
+        user_reply_block = ""
+        if user_reply:
+            user_reply_block = f"\nLatest user reply: {user_reply}"
+        return TURN_CONTEXT_TEMPLATE.format(
             current_time=now.strftime("%H:%M"),
             bedtime=bedtime,
             wake_time=wake_time,
@@ -165,6 +179,7 @@ class LLMClient:
             window_title=window_title or "",
             nudge_count=nudge_count,
             nudge_style=nudge_style,
+            user_reply_block=user_reply_block,
         )
 
     # ---- API calls ------------------------------------------------------

@@ -60,8 +60,14 @@ def test_parse_decision_empty_json_object_falls_back() -> None:
     assert decision.message
 
 
-def test_build_system_prompt_fills_template() -> None:
-    prompt = LLMClient.build_system_prompt(
+def test_build_system_prompt_includes_json_contract() -> None:
+    prompt = LLMClient.build_system_prompt()
+    assert "Respond in JSON format" in prompt
+    assert "activity_type" in prompt
+
+
+def test_build_turn_context_message_fills_template() -> None:
+    prompt = LLMClient.build_turn_context_message(
         now=datetime(2026, 4, 15, 23, 30),
         bedtime="21:30",
         wake_time="07:30",

@@ -133,11 +133,12 @@ class Monitor:
         )
         log.info("Handling user reply, current app=%s", activity.app)
         self._consume_pending_notification_responses()
-        system_prompt = self._build_system_prompt(activity)
+        system_prompt = LLMClient.build_system_prompt()
+        turn_context = self._build_turn_context(activity, user_reply=text)
         decision = self.llm_client.classify_and_nudge(
             system_prompt=system_prompt,
             history=self.history,
-            user_message=text,
+            user_message=turn_context,
             nudge_count=self.status.nudge_count,
         )
         log.info(
@@ -264,10 +265,12 @@ class Monitor:
 
         # 10) Ask the LLM what to do.
         self._consume_pending_notification_responses()
-        system_prompt = self._build_system_prompt(activity)
+        system_prompt = LLMClient.build_system_prompt()
+        turn_context = self._build_turn_context(activity)
         decision = self.llm_client.classify_and_nudge(
             system_prompt=system_prompt,
             history=self.history,
+            user_message=turn_context,
             nudge_count=self.status.nudge_count,
         )
 
@@ -319,9 +322,9 @@ class Monitor:
         except ActivityWatchError:
             return None
 
-    def _build_system_prompt(self, activity: WindowActivity) -> str:
+    def _build_turn_context(self, activity: WindowActivity, user_reply: str | None = None) -> str:
         now = datetime.now()
-        return LLMClient.build_system_prompt(
+        return LLMClient.build_turn_context_message(
             now=now,
             bedtime=self.config.schedule["active_from"],
             wake_time=self.config.schedule["wake_time"],
@@ -330,6 +333,7 @@ class Monitor:
             window_title=activity.title,
             nudge_count=self.status.nudge_count,
             nudge_style=self.config.notifications.get("nudge_style", "gentle"),
+            user_reply=user_reply,
         )
 
     def _maybe_start_session(self, now: datetime) -> None:
