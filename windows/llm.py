@@ -183,7 +183,7 @@ class LLMClient:
                 model=self.model,
                 messages=messages,
                 response_format={"type": "json_object"},
-                max_tokens=300,
+                max_completion_tokens=300,
                 temperature=0.7,
             )
             content = response.choices[0].message.content or "{}"
