@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 from unittest.mock import MagicMock
 
-from windows.llm import MAX_COMPLETION_TOKENS, ConversationHistory, LLMClient, NudgeDecision
+from windows.llm import ConversationHistory, LLMClient, NudgeDecision
 
 
 def test_conversation_history_trims() -> None:
@@ -106,7 +106,7 @@ def test_classify_and_nudge_calls_openai() -> None:
     assert decision.message == "Put the phone down."
     fake_openai.chat.completions.create.assert_called_once()
     kwargs = fake_openai.chat.completions.create.call_args.kwargs
-    assert kwargs["max_completion_tokens"] == MAX_COMPLETION_TOKENS
+    assert "max_completion_tokens" not in kwargs
 
 
 def test_classify_and_nudge_fallback_on_exception() -> None:
