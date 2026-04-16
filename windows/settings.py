@@ -77,6 +77,7 @@ class SettingsWindow:
         self.var_escalation: tk.BooleanVar | None = None
         self.var_nudge_style: tk.StringVar | None = None
         self.var_autostart: tk.BooleanVar | None = None
+        self.var_debug_logging: tk.BooleanVar | None = None
 
         self._entry_api_key: tk.Entry | None = None
         self._aw_status_label: ttk.Label | None = None
@@ -156,6 +157,9 @@ class SettingsWindow:
         )
         self.var_autostart = tk.BooleanVar(
             value=bool(c.data.get("start_with_windows", False))
+        )
+        self.var_debug_logging = tk.BooleanVar(
+            value=bool(c.data.get("debug_logging", False))
         )
 
     def _build_aw_tab(self, notebook: ttk.Notebook) -> None:
@@ -256,6 +260,13 @@ class SettingsWindow:
             width=20,
         ).grid(row=1, column=1, sticky="w", pady=4)
 
+        assert self.var_debug_logging
+        ttk.Checkbutton(
+            frame,
+            text="Enable debug logging (verbose diagnostics)",
+            variable=self.var_debug_logging,
+        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(12, 4))
+
         ttk.Label(
             frame,
             text=(
@@ -266,7 +277,7 @@ class SettingsWindow:
             ),
             foreground="#666",
             justify="left",
-        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(12, 0))
+        ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(12, 0))
 
     def _build_notifications_tab(self, notebook: ttk.Notebook) -> None:
         frame = ttk.Frame(notebook, padding=12)
@@ -441,7 +452,12 @@ class SettingsWindow:
         if nudge_style_key not in NUDGE_STYLES:
             nudge_style_key = "gentle"
 
-        assert self.var_min_interval and self.var_escalation and self.var_autostart
+        assert (
+            self.var_min_interval
+            and self.var_escalation
+            and self.var_autostart
+            and self.var_debug_logging
+        )
         c = self.config
         c.data["openai_api_key"] = api_key
         c.data["model"] = self.var_model.get()
@@ -455,6 +471,7 @@ class SettingsWindow:
         c.data["notifications"]["escalation_enabled"] = self.var_escalation.get()
         c.data["notifications"]["nudge_style"] = nudge_style_key
         c.data["start_with_windows"] = self.var_autostart.get()
+        c.data["debug_logging"] = self.var_debug_logging.get()
 
         try:
             c.save()

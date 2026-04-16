@@ -39,6 +39,7 @@ def test_deep_merge_preserves_new_defaults(tmp_path: Path) -> None:
     # Defaults fill in missing sections.
     assert cfg.schedule["active_from"] == DEFAULT_CONFIG["schedule"]["active_from"]
     assert "notifications" in cfg.data
+    assert cfg.data["debug_logging"] is False
 
 
 def test_within_same_day_window(tmp_path: Path) -> None:

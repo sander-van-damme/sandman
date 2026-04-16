@@ -29,6 +29,7 @@ NUDGE_STYLES = ("gentle", "direct", "humor", "therapist")
 DEFAULT_CONFIG: dict[str, Any] = {
     "openai_api_key": "",
     "model": "gpt-5-nano",
+    "debug_logging": False,
     "schedule": {
         "active_from": "21:30",
         "active_until": "02:00",
