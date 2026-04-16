@@ -174,3 +174,18 @@ def test_aw_unreachable_sets_error_state(config: Config) -> None:
     assert m.status.state == MonitorState.ERROR
     assert m.status.aw_connected is False
     nudge_cb.assert_not_called()
+
+
+def test_notification_response_is_forwarded_to_next_llm_request(config: Config) -> None:
+    m, nudge_cb, _ = _make_monitor(config)
+    m.record_notification_response("I'm going to bed")
+
+    with patch("windows.monitor.datetime") as mdt:
+        mdt.now.return_value = _ACTIVE_NOW
+        mdt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        m._tick()
+
+    nudge_cb.assert_called_once()
+    llm_history = m.llm_client.classify_and_nudge.call_args.kwargs["history"]
+    assert llm_history.messages[0]["role"] == "user"
+    assert "Quick notification response: I'm going to bed." in llm_history.messages[0]["content"]

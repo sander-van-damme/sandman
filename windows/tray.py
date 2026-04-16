@@ -89,14 +89,12 @@ class SandmanTray:
         self,
         *,
         on_open_settings: Callable[[], None],
-        on_open_chat: Callable[[], None],
         on_pause_30: Callable[[], None],
         on_pause_tomorrow: Callable[[], None],
         on_resume: Callable[[], None],
         on_quit: Callable[[], None],
     ) -> None:
         self._on_open_settings = on_open_settings
-        self._on_open_chat = on_open_chat
         self._on_pause_30 = on_pause_30
         self._on_pause_tomorrow = on_pause_tomorrow
         self._on_resume = on_resume
@@ -120,7 +118,6 @@ class SandmanTray:
             pystray.MenuItem(_status_title, None, enabled=False),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Settings...", lambda _i, _it: self._on_open_settings()),
-            pystray.MenuItem("Chat with Sandman", lambda _i, _it: self._on_open_chat()),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Pause for 30 min", lambda _i, _it: self._on_pause_30()),
             pystray.MenuItem(

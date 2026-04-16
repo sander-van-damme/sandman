@@ -168,7 +168,6 @@ windows/
 ├── monitor.py        # Background poll loop: rate limit, dedup, LLM call.
 ├── llm.py            # OpenAI client, prompt templates, conversation history.
 ├── notifications.py  # Toast notifications + reply chat window.
-├── sleep_detect.py   # Laptop sleep/wake detection via monotonic clock gaps.
 └── assets/           # Icon files (generated programmatically if missing).
 ```
 
@@ -182,9 +181,6 @@ Key design notes:
   hostname when available.
 - **Midnight crossover.** `is_within_active_window` handles overnight
   windows and checks active days against the day the window *started*.
-- **Sleep detection.** Sandman notices when the monotonic clock jumped
-  forward by more than ~60s between polls and imposes a 2-minute grace
-  period before resuming nudges.
 - **Dedup.** If the exact same (app, title) was the subject of the last
   nudge, Sandman waits `3 × min_interval` before re-nudging about it — so
   it won't nag you about the same VS Code file.
