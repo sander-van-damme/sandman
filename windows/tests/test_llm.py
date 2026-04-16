@@ -114,6 +114,52 @@ def test_classify_and_nudge_fallback_on_exception() -> None:
     assert decision.reason.startswith("api_error")
 
 
+def test_classify_and_nudge_fallback_on_empty_content() -> None:
+    """When the LLM returns empty message.content, use fallback nudge."""
+    client = LLMClient(api_key="sk-test")
+
+    fake_openai = MagicMock()
+    fake_openai.chat.completions.create.return_value = MagicMock(
+        choices=[
+            MagicMock(
+                finish_reason="stop",
+                message=MagicMock(content="", refusal=None),
+            )
+        ]
+    )
+    client._client = fake_openai
+
+    decision = client.classify_and_nudge(
+        system_prompt="sys", history=ConversationHistory(), nudge_count=1
+    )
+    assert decision.should_nudge is True
+    assert decision.reason == "empty_response"
+    assert decision.message  # fallback message is non-empty
+
+
+def test_classify_and_nudge_fallback_on_none_content() -> None:
+    """When message.content is None, use fallback nudge."""
+    client = LLMClient(api_key="sk-test")
+
+    fake_openai = MagicMock()
+    fake_openai.chat.completions.create.return_value = MagicMock(
+        choices=[
+            MagicMock(
+                finish_reason="stop",
+                message=MagicMock(content=None, refusal=None),
+            )
+        ]
+    )
+    client._client = fake_openai
+
+    decision = client.classify_and_nudge(
+        system_prompt="sys", history=ConversationHistory(), nudge_count=0
+    )
+    assert decision.should_nudge is True
+    assert decision.reason == "empty_response"
+    assert decision.message
+
+
 def test_extract_response_content_with_content_parts() -> None:
     response = MagicMock(
         choices=[

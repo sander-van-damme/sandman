@@ -192,6 +192,10 @@ class LLMClient:
             log.warning("OpenAI call failed: %s", exc)
             return NudgeDecision.fallback(nudge_count, reason=f"api_error: {exc}")
 
+        if not content:
+            log.warning("LLM returned empty content — using fallback nudge")
+            return NudgeDecision.fallback(nudge_count, reason="empty_response")
+
         decision = self._parse_decision(content, nudge_count)
         log.info(
             "LLM decision: should_nudge=%s, activity=%s, message=%r",
@@ -211,19 +215,30 @@ class LLMClient:
         - already-decoded object
         """
         try:
-            message = response.choices[0].message
+            choice = response.choices[0]
+            message = choice.message
         except Exception:
             log.warning("Failed to access response.choices[0].message — returning empty")
-            return "{}"
+            return ""
+
+        finish_reason = getattr(choice, "finish_reason", None)
+        if finish_reason and finish_reason != "stop":
+            log.warning("Non-standard finish_reason: %s", finish_reason)
 
         content = getattr(message, "content", None)
         log.debug("Raw message.content type=%s", type(content).__name__)
+
+        # Check for refusal (newer OpenAI SDK sets this when model refuses)
+        refusal = getattr(message, "refusal", None)
+        if refusal:
+            log.warning("Model refused request: %s", refusal)
+
         if isinstance(content, dict):
             return content
         if isinstance(content, str):
             if not content:
                 log.warning("message.content is empty string")
-            return content or "{}"
+            return content
         if isinstance(content, list):
             text_parts: list[str] = []
             for part in content:
@@ -244,9 +259,12 @@ class LLMClient:
             joined = "\n".join(p for p in text_parts if p).strip()
             if not joined:
                 log.warning("content list had %d parts but no extractable text", len(content))
-            return joined or "{}"
+            return joined
+        if content is None:
+            log.warning("message.content is None")
+            return ""
         log.warning("Unexpected message.content type: %s", type(content).__name__)
-        return "{}"
+        return ""
 
     @staticmethod
     def _parse_decision(
