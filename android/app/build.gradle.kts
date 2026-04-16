@@ -17,6 +17,29 @@ android {
         versionName = "1.0.0"
     }
 
+    signingConfigs {
+        val keystorePath = System.getenv("SANDMAN_KEYSTORE_FILE")
+        if (keystorePath != null) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("SANDMAN_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("SANDMAN_KEY_ALIAS")
+                keyPassword = System.getenv("SANDMAN_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            signingConfigs.findByName("release")?.let { signingConfig = it }
+        }
+    }
+
     buildFeatures {
         compose = true
     }
