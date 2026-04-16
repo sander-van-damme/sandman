@@ -73,6 +73,7 @@ class NudgeDecision:
 
     @classmethod
     def fallback(cls, nudge_count: int, reason: str = "LLM unavailable") -> "NudgeDecision":
+        log.warning("Using fallback nudge (nudge_count=%d, reason=%s)", nudge_count, reason)
         msg = FALLBACK_MESSAGES[min(nudge_count, len(FALLBACK_MESSAGES) - 1)]
         return cls(
             activity_type="other",
