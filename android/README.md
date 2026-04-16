@@ -25,7 +25,7 @@ It doesn't just block apps. It recognizes "you're deep in a coding session at
 1. Every 30 seconds `NudgeService` queries the Android Usage Stats API for
    the currently foregrounded app and checks whether the screen is on.
 2. If you're inside your active window, not paused, the screen is on, and
-   you're not rate-limited — Sandman sends the current app to `gpt-5-nano`
+   you're not rate-limited — Sandman sends the current app to `gpt-5-mini`
    along with your preferences and the session's nudge count.
 3. The model decides whether a nudge is warranted and returns a message
    matching your chosen style.
@@ -42,7 +42,7 @@ It doesn't just block apps. It recognizes "you're deep in a coding session at
   Special app access → Usage access)
 
 At typical usage (~48 nudges per night, 30 nights/month) the OpenAI cost is
-well under $0.10/month using `gpt-5-nano`.
+well under $0.10/month using `gpt-5-mini`.
 
 ## Install & run
 
@@ -88,7 +88,7 @@ change them at any time through the in-app Settings screen.
 | Setting | Default | Description |
 |---|---|---|
 | OpenAI API key | — | Required for nudge generation |
-| Model | `gpt-5-nano` | OpenAI model to use |
+| Model | `gpt-5-mini` | OpenAI model to use |
 | Active from | `21:30` | Start of wind-down window |
 | Active until | `02:00` | End of wind-down window |
 | Active days | Every day | Days of the week to monitor |

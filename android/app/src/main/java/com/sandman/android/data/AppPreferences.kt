@@ -30,7 +30,7 @@ object PrefKeys {
 
 /** Default values mirroring the Python DEFAULT_CONFIG. */
 object Defaults {
-    const val MODEL = "gpt-5-nano"
+    const val MODEL = "gpt-5-mini"
     const val ACTIVE_FROM = "21:30"
     const val ACTIVE_UNTIL = "02:00"
     const val ACTIVE_DAYS = "0,1,2,3,4,5,6"
@@ -41,7 +41,7 @@ object Defaults {
 }
 
 val NUDGE_STYLES = listOf("gentle", "direct", "humor", "therapist")
-val MODELS = listOf("gpt-5-nano", "gpt-4o-mini", "gpt-4o", "gpt-4.1-nano")
+val MODELS = listOf("gpt-5-mini", "gpt-4o-mini", "gpt-4o", "gpt-4.1-nano")
 
 private val TIME_FMT = DateTimeFormatter.ofPattern("HH:mm")
 

@@ -28,7 +28,7 @@ NUDGE_STYLES = ("gentle", "direct", "humor", "therapist")
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "openai_api_key": "",
-    "model": "gpt-5-nano",
+    "model": "gpt-5-mini",
     "debug_logging": False,
     "schedule": {
         "active_from": "21:30",
@@ -104,7 +104,7 @@ class Config:
 
     @property
     def model(self) -> str:
-        return self.data.get("model", "gpt-5-nano")
+        return self.data.get("model", "gpt-5-mini")
 
     @property
     def schedule(self) -> dict[str, Any]:
