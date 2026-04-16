@@ -90,15 +90,19 @@ jobs:
       # Decode the release keystore from a base64-encoded secret.
       # If the secret is not configured, the build falls back to a debug APK.
       - name: Decode signing keystore
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/sandman-release.jks"
-          echo "SANDMAN_KEYSTORE_FILE=$RUNNER_TEMP/sandman-release.jks" >> "$GITHUB_ENV"
-          echo "SANDMAN_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
-          echo "SANDMAN_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> "$GITHUB_ENV"
-          echo "SANDMAN_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> "$GITHUB_ENV"
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/sandman-release.jks"
+            echo "SANDMAN_KEYSTORE_FILE=$RUNNER_TEMP/sandman-release.jks" >> "$GITHUB_ENV"
+            echo "SANDMAN_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "SANDMAN_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "SANDMAN_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          fi
 
       - name: Determine build variant
         id: variant
