@@ -105,6 +105,8 @@ def test_classify_and_nudge_calls_openai() -> None:
     assert decision.should_nudge
     assert decision.message == "Put the phone down."
     fake_openai.chat.completions.create.assert_called_once()
+    kwargs = fake_openai.chat.completions.create.call_args.kwargs
+    assert "max_completion_tokens" not in kwargs
 
 
 def test_classify_and_nudge_fallback_on_exception() -> None:
@@ -209,3 +211,22 @@ def test_extract_response_content_uses_message_parsed_dict() -> None:
     decision = LLMClient._parse_decision(content, nudge_count=0)
     assert decision.should_nudge is True
     assert decision.message == "Save your work and wind down."
+
+
+def test_serialize_response_uses_model_dump_json() -> None:
+    response = MagicMock()
+    response.model_dump_json.return_value = '{"ok": true}'
+
+    serialized = LLMClient._serialize_response(response)
+
+    assert serialized == '{"ok": true}'
+
+
+def test_serialize_response_falls_back_to_repr() -> None:
+    class BareResponse:
+        def __repr__(self) -> str:
+            return "<bare-response>"
+
+    serialized = LLMClient._serialize_response(BareResponse())
+
+    assert serialized == "<bare-response>"

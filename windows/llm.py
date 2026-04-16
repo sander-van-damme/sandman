@@ -184,8 +184,8 @@ class LLMClient:
                 model=self.model,
                 messages=messages,
                 response_format={"type": "json_object"},
-                max_completion_tokens=300,
             )
+            log.debug("LLM raw API response: %s", self._serialize_response(response))
             content = self._extract_response_content(response)
             log.info("LLM raw content: %s", content)
         except Exception as exc:  # pragma: no cover - network/SDK errors
@@ -204,6 +204,29 @@ class LLMClient:
             decision.message[:120] if decision.message else "",
         )
         return decision
+
+
+    @staticmethod
+    def _serialize_response(response: Any) -> str:
+        """Best-effort serialization for debugging SDK responses."""
+        dump_fn = getattr(response, "model_dump_json", None)
+        if callable(dump_fn):
+            try:
+                return str(dump_fn(indent=2))
+            except Exception:  # pragma: no cover - debug logging only
+                pass
+
+        dump_dict_fn = getattr(response, "model_dump", None)
+        if callable(dump_dict_fn):
+            try:
+                return json.dumps(dump_dict_fn(), ensure_ascii=False, default=str)
+            except Exception:  # pragma: no cover - debug logging only
+                pass
+
+        try:
+            return repr(response)
+        except Exception:  # pragma: no cover - extremely defensive
+            return "<unserializable response>"
 
     @staticmethod
     def _extract_response_content(response: Any) -> str | dict[str, Any]:
