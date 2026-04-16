@@ -19,12 +19,9 @@ const val NUDGE_NOTIF_ID = 2
 
 const val REMOTE_INPUT_KEY = "reply_text"
 const val ACTION_REPLY = "sandman.ACTION_REPLY"
-const val ACTION_BED = "sandman.ACTION_BED"
-const val ACTION_SNOOZE = "sandman.ACTION_SNOOZE"
 
 object NudgeNotifier {
 
-    /** Call once at app startup (e.g. from Application.onCreate). */
     fun createChannels(context: Context) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -51,7 +48,6 @@ object NudgeNotifier {
         )
     }
 
-    /** Build the persistent foreground-service notification. */
     fun buildStatusNotification(
         context: Context,
         state: MonitorState = MonitorState.IDLE,
@@ -80,14 +76,13 @@ object NudgeNotifier {
             .build()
     }
 
-    /** Update the persistent status notification in place. */
     fun updateStatus(context: Context, state: MonitorState, message: String) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(STATUS_NOTIF_ID, buildStatusNotification(context, state, message))
     }
 
     /**
-     * Post a nudge notification with Reply / Going to bed / 5 more minutes actions.
+     * Post a nudge notification with only an inline Reply action.
      * When nudgeCount >= 7 and escalation is enabled, adds a fullScreenIntent.
      */
     fun showNudge(
@@ -96,7 +91,6 @@ object NudgeNotifier {
         nudgeCount: Int,
         escalationEnabled: Boolean,
     ) {
-        // Inline reply action
         val remoteInput = RemoteInput.Builder(REMOTE_INPUT_KEY)
             .setLabel("Reply to Sandman…")
             .build()
@@ -111,18 +105,6 @@ object NudgeNotifier {
             "Reply",
             replyIntent,
         ).addRemoteInput(remoteInput).build()
-
-        val bedIntent = PendingIntent.getBroadcast(
-            context, 11,
-            Intent(context, NotificationReceiver::class.java).setAction(ACTION_BED),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-
-        val snoozeIntent = PendingIntent.getBroadcast(
-            context, 12,
-            Intent(context, NotificationReceiver::class.java).setAction(ACTION_SNOOZE),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
 
         val openIntent = PendingIntent.getActivity(
             context, 0,
@@ -139,10 +121,7 @@ object NudgeNotifier {
             .setAutoCancel(false)
             .setContentIntent(openIntent)
             .addAction(replyAction)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Going to bed", bedIntent)
-            .addAction(android.R.drawable.ic_menu_recent_history, "5 more minutes", snoozeIntent)
 
-        // Escalation: full-screen intent at 7+ nudges
         if (escalationEnabled && nudgeCount >= 7) {
             val fsIntent = PendingIntent.getActivity(
                 context, 1,

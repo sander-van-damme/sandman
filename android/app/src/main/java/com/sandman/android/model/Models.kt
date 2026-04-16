@@ -7,6 +7,7 @@ data class NudgeDecision(
     val reason: String,
     val message: String,
     val followUpQuestion: String? = null,
+    val extensionMinutes: Int? = null,
 ) {
     companion object {
         private val FALLBACK_MESSAGES = listOf(
@@ -41,12 +42,6 @@ enum class MonitorState {
     NUDGING, // recently sent a nudge
     ERROR,   // missing API key, usage-stats permission denied, etc.
 }
-
-/** A single message in the Sandman chat transcript. */
-data class ChatMessage(
-    val role: String,   // "sandman" or "user"
-    val text: String,
-)
 
 /** In-memory conversation history for the current session (mirrors Python ConversationHistory). */
 class ConversationHistory(private val maxMessages: Int = 20) {
