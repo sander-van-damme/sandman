@@ -2,11 +2,11 @@
 ; Builds a Windows installer that places Sandman.exe in the right location,
 ; adds Start Menu + (optional) Desktop shortcuts, and registers an uninstaller.
 ;
-; Build locally with:
-;   iscc installer.iss
+; Build locally with (from repo root):
+;   iscc windows/installer.iss
 ;
 ; Or pass a version override from CI:
-;   iscc /DMyAppVersion=1.2.3 installer.iss
+;   iscc /DMyAppVersion=1.2.3 windows/installer.iss
 ;
 ; Requires Inno Setup 6 (https://jrsoftware.org/isinfo.php). Pre-installed on
 ; GitHub Actions windows-latest runners.
@@ -49,9 +49,9 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 
 ; Output
-OutputDir=installer
+OutputDir=..\installer
 OutputBaseFilename=Sandman-Setup-{#MyAppVersion}
-SetupIconFile=sandman\assets\icon_active.ico
+SetupIconFile=assets\icon_active.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
 
@@ -69,9 +69,9 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "startupicon"; Description: "Start {#MyAppName} automatically when Windows starts"; GroupDescription: "Startup:"; Flags: unchecked
 
 [Files]
-Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
-Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Comment: "Bedtime nudge app"

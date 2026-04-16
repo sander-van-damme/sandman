@@ -12,10 +12,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from sandman.activity_watch import AfkStatus, WindowActivity
-from sandman.config import Config
-from sandman.llm import NudgeDecision
-from sandman.monitor import Monitor, MonitorState
+from windows.activity_watch import AfkStatus, WindowActivity
+from windows.config import Config
+from windows.llm import NudgeDecision
+from windows.monitor import Monitor, MonitorState
 
 
 @pytest.fixture
@@ -69,7 +69,7 @@ _ACTIVE_NOW = datetime(2026, 4, 15, 22, 30)  # Wed 22:30 — inside window
 def test_skips_when_not_configured(config: Config, tmp_path: Path) -> None:
     config.data["openai_api_key"] = ""
     m, nudge_cb, _ = _make_monitor(config)
-    with patch("sandman.monitor.datetime") as mdt:
+    with patch("windows.monitor.datetime") as mdt:
         mdt.now.return_value = _ACTIVE_NOW
         mdt.side_effect = lambda *a, **kw: datetime(*a, **kw)
         m._tick()
@@ -80,7 +80,7 @@ def test_skips_when_not_configured(config: Config, tmp_path: Path) -> None:
 def test_skips_outside_active_window(config: Config) -> None:
     m, nudge_cb, _ = _make_monitor(config)
     outside = datetime(2026, 4, 15, 10, 0)  # 10am
-    with patch("sandman.monitor.datetime") as mdt:
+    with patch("windows.monitor.datetime") as mdt:
         mdt.now.return_value = outside
         mdt.side_effect = lambda *a, **kw: datetime(*a, **kw)
         m._tick()
@@ -90,7 +90,7 @@ def test_skips_outside_active_window(config: Config) -> None:
 
 def test_nudges_when_conditions_met(config: Config) -> None:
     m, nudge_cb, _ = _make_monitor(config)
-    with patch("sandman.monitor.datetime") as mdt:
+    with patch("windows.monitor.datetime") as mdt:
         mdt.now.return_value = _ACTIVE_NOW
         mdt.side_effect = lambda *a, **kw: datetime(*a, **kw)
         m._tick()
@@ -104,7 +104,7 @@ def test_rate_limits_second_nudge(config: Config) -> None:
     # Pre-seed the session so _maybe_start_session doesn't wipe last_nudge_at.
     m._session_date = _ACTIVE_NOW.strftime("%Y-%m-%d")
     m.status.last_nudge_at = _ACTIVE_NOW - timedelta(seconds=30)
-    with patch("sandman.monitor.datetime") as mdt:
+    with patch("windows.monitor.datetime") as mdt:
         mdt.now.return_value = _ACTIVE_NOW
         mdt.side_effect = lambda *a, **kw: datetime(*a, **kw)
         m._tick()
@@ -116,7 +116,7 @@ def test_dedupes_same_activity_within_triple_interval(config: Config) -> None:
     m._session_date = _ACTIVE_NOW.strftime("%Y-%m-%d")
     m.status.last_nudge_at = _ACTIVE_NOW - timedelta(seconds=90)  # > 60 but < 180
     m._last_nudge_activity_key = ("Code.exe", "main.py")
-    with patch("sandman.monitor.datetime") as mdt:
+    with patch("windows.monitor.datetime") as mdt:
         mdt.now.return_value = _ACTIVE_NOW
         mdt.side_effect = lambda *a, **kw: datetime(*a, **kw)
         m._tick()
@@ -128,7 +128,7 @@ def test_skips_when_afk(config: Config) -> None:
         config, afk=AfkStatus(afk=True, duration=600)
     )
     m.status.nudge_count = 4
-    with patch("sandman.monitor.datetime") as mdt:
+    with patch("windows.monitor.datetime") as mdt:
         mdt.now.return_value = _ACTIVE_NOW
         mdt.side_effect = lambda *a, **kw: datetime(*a, **kw)
         m._tick()
@@ -145,7 +145,7 @@ def test_llm_can_decline_to_nudge(config: Config) -> None:
         message="",
     )
     m, nudge_cb, _ = _make_monitor(config, decision=decision)
-    with patch("sandman.monitor.datetime") as mdt:
+    with patch("windows.monitor.datetime") as mdt:
         mdt.now.return_value = _ACTIVE_NOW
         mdt.side_effect = lambda *a, **kw: datetime(*a, **kw)
         m._tick()
@@ -155,7 +155,7 @@ def test_llm_can_decline_to_nudge(config: Config) -> None:
 
 def test_pause_blocks_ticks(config: Config) -> None:
     m, nudge_cb, _ = _make_monitor(config)
-    with patch("sandman.monitor.datetime") as mdt:
+    with patch("windows.monitor.datetime") as mdt:
         mdt.now.return_value = _ACTIVE_NOW
         mdt.side_effect = lambda *a, **kw: datetime(*a, **kw)
         m.pause_for(30)
@@ -167,7 +167,7 @@ def test_pause_blocks_ticks(config: Config) -> None:
 def test_aw_unreachable_sets_error_state(config: Config) -> None:
     m, nudge_cb, _ = _make_monitor(config)
     m.aw_client.is_available.return_value = False
-    with patch("sandman.monitor.datetime") as mdt:
+    with patch("windows.monitor.datetime") as mdt:
         mdt.now.return_value = _ACTIVE_NOW
         mdt.side_effect = lambda *a, **kw: datetime(*a, **kw)
         m._tick()

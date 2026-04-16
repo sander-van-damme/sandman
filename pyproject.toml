@@ -21,10 +21,10 @@ dependencies = [
 ]
 
 [project.scripts]
-sandman = "sandman.main:main"
+sandman = "windows.main:main"
 
 [tool.setuptools.packages.find]
-include = ["sandman*"]
+include = ["windows*"]
 
 [tool.setuptools.package-data]
-sandman = ["assets/*.ico", "assets/*.png"]
+windows = ["assets/*.ico", "assets/*.png"]

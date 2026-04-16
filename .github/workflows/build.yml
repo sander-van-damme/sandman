@@ -25,15 +25,15 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pyinstaller
-          pip install -r requirements.txt
+          pip install -r windows/requirements.txt
 
       - name: Build Sandman.exe with PyInstaller
         run: |
           pyinstaller --onefile --windowed `
             --name=Sandman `
-            --icon=sandman/assets/icon_active.ico `
-            --add-data "sandman/assets;sandman/assets" `
-            __main__.py
+            --icon=windows/assets/icon_active.ico `
+            --add-data "windows/assets;windows/assets" `
+            windows/__main__.py
 
       - name: Derive version from tag
         id: version
@@ -49,7 +49,7 @@ jobs:
           # Inno Setup 6 is pre-installed on windows-latest runners.
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
             /DMyAppVersion=${{ steps.version.outputs.value }} `
-            installer.iss
+            windows/installer.iss
 
       - name: Upload raw executable artifact
         uses: actions/upload-artifact@v4
