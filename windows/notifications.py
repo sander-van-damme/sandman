@@ -187,23 +187,11 @@ class ReplyWindow:
             self._owns_root = False
             self._hidden_root = None  # type: ignore[assignment]
 
-        w = int(560 * self._ui_scale)
-        h = int(500 * self._ui_scale)
-
         top.title("Sandman")
-        top.geometry(f"{w}x{h}")
-        top.minsize(int(260 * self._ui_scale), int(320 * self._ui_scale))
+        top.attributes("-fullscreen", True)
         top.attributes("-topmost", True)
         top.protocol("WM_DELETE_WINDOW", self.close)
         self._apply_styles(top)
-
-        # Position center-screen.
-        top.update_idletasks()
-        sw = top.winfo_screenwidth()
-        sh = top.winfo_screenheight()
-        x = max(0, (sw - w) // 2)
-        y = max(0, (sh - h) // 2)
-        top.geometry(f"{w}x{h}+{x}+{y}")
 
         # Container so we can rely on grid for a clean bottom-entry layout.
         container = ttk.Frame(top, style="Nudge.Root.TFrame")
