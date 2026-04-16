@@ -185,7 +185,7 @@ class LLMClient:
                 response_format={"type": "json_object"},
                 max_completion_tokens=300,
             )
-            content = response.choices[0].message.content or "{}"
+            content = self._extract_response_content(response)
         except Exception as exc:  # pragma: no cover - network/SDK errors
             log.warning("OpenAI call failed: %s", exc)
             return NudgeDecision.fallback(nudge_count, reason=f"api_error: {exc}")
@@ -193,10 +193,51 @@ class LLMClient:
         return self._parse_decision(content, nudge_count)
 
     @staticmethod
-    def _parse_decision(content: str, nudge_count: int) -> NudgeDecision:
+    def _extract_response_content(response: Any) -> str | dict[str, Any]:
+        """Extract text payload from Chat Completions variants.
+
+        Different providers/SDK versions can return ``message.content`` as:
+        - plain string (classic chat completions)
+        - content-part list (e.g. [{"type":"text","text":"..."}])
+        - already-decoded object
+        """
         try:
-            raw = json.loads(content)
-        except json.JSONDecodeError as exc:
+            message = response.choices[0].message
+        except Exception:
+            return "{}"
+
+        content = getattr(message, "content", None)
+        if isinstance(content, dict):
+            return content
+        if isinstance(content, str):
+            return content or "{}"
+        if isinstance(content, list):
+            text_parts: list[str] = []
+            for part in content:
+                if isinstance(part, str):
+                    text_parts.append(part)
+                    continue
+                # SDK objects, pydantic models, or plain dicts.
+                part_dict = (
+                    part
+                    if isinstance(part, dict)
+                    else getattr(part, "model_dump", lambda: None)()  # type: ignore[misc]
+                )
+                if not isinstance(part_dict, dict):
+                    continue
+                text = part_dict.get("text") or part_dict.get("content")
+                if isinstance(text, str):
+                    text_parts.append(text)
+            return "\n".join(p for p in text_parts if p).strip() or "{}"
+        return "{}"
+
+    @staticmethod
+    def _parse_decision(
+        content: str | dict[str, Any], nudge_count: int
+    ) -> NudgeDecision:
+        try:
+            raw = content if isinstance(content, dict) else json.loads(content)
+        except (json.JSONDecodeError, TypeError) as exc:
             log.warning("LLM returned non-JSON content: %s", exc)
             return NudgeDecision.fallback(nudge_count, reason="invalid_json")
 

@@ -145,16 +145,34 @@ class LlmClient(
             }
 
             val root = json.parseToJsonElement(responseBody).jsonObject
-            val content = root["choices"]
-                ?.jsonArray?.firstOrNull()
-                ?.jsonObject?.get("message")
-                ?.jsonObject?.get("content")
-                ?.jsonPrimitive?.content ?: "{}"
+            val content = extractContent(root)
 
             parseDecision(content, nudgeCount)
         } catch (e: Exception) {
             Log.w(TAG, "OpenAI call failed", e)
             NudgeDecision.fallback(nudgeCount, "exception: ${e.message}")
+        }
+    }
+
+    private fun extractContent(root: JsonObject): String {
+        val content = root["choices"]
+            ?.jsonArray?.firstOrNull()
+            ?.jsonObject?.get("message")
+            ?.jsonObject?.get("content")
+            ?: return "{}"
+
+        return when (content) {
+            is JsonPrimitive -> content.content
+            is JsonObject -> content.toString()
+            is JsonArray -> {
+                content.mapNotNull { part ->
+                    val obj = part as? JsonObject ?: return@mapNotNull null
+                    obj["text"]?.jsonPrimitive?.contentOrNull
+                        ?: obj["content"]?.jsonPrimitive?.contentOrNull
+                }.joinToString("\n").ifBlank { "{}" }
+            }
+
+            else -> "{}"
         }
     }
 

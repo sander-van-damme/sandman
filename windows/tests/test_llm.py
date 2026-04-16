@@ -112,3 +112,23 @@ def test_classify_and_nudge_fallback_on_exception() -> None:
     assert isinstance(decision, NudgeDecision)
     assert decision.should_nudge is True
     assert decision.reason.startswith("api_error")
+
+
+def test_extract_response_content_with_content_parts() -> None:
+    response = MagicMock(
+        choices=[
+            MagicMock(
+                message=MagicMock(
+                    content=[
+                        {"type": "text", "text": '{"activity_type":"utility",'},
+                        {"type": "text", "text": '"should_nudge":true,"reason":"late"'},
+                        {"type": "text", "text": ',"message":"Wrap up now."}'},
+                    ]
+                )
+            )
+        ]
+    )
+    content = LLMClient._extract_response_content(response)
+    decision = LLMClient._parse_decision(content, nudge_count=0)
+    assert decision.should_nudge is True
+    assert decision.message == "Wrap up now."
