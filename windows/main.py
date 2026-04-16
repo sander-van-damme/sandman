@@ -36,7 +36,15 @@ from .tray import SandmanTray
 log = logging.getLogger(__name__)
 
 
-def _setup_logging() -> None:
+def _set_log_level(debug_enabled: bool) -> None:
+    level = logging.DEBUG if debug_enabled else logging.INFO
+    root = logging.getLogger()
+    root.setLevel(level)
+    for handler in root.handlers:
+        handler.setLevel(level)
+
+
+def _setup_logging(*, debug_enabled: bool) -> None:
     from pathlib import Path
 
     log_dir = Path.home() / ".sandman"
@@ -57,6 +65,7 @@ def _setup_logging() -> None:
             ),
         ],
     )
+    _set_log_level(debug_enabled)
 
 
 class SandmanApp:
@@ -255,6 +264,7 @@ class SandmanApp:
             self.llm_client.api_key = cfg.api_key
             self.llm_client.model = cfg.model
             self.llm_client._client = None  # type: ignore[attr-defined]
+            _set_log_level(bool(cfg.data.get("debug_logging", False)))
             # Reset bucket cache in case hostname shifted.
             self.aw_client.reset_bucket_cache()
             self._settings_window = None
@@ -346,7 +356,7 @@ class SandmanApp:
     # ---- lifecycle ------------------------------------------------------
 
     def run(self) -> int:
-        _setup_logging()
+        _setup_logging(debug_enabled=bool(self.config.data.get("debug_logging", False)))
         log.info("Starting Sandman")
 
         # Start UI thread first so the Tk root exists before anything
