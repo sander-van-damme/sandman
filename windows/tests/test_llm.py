@@ -51,6 +51,13 @@ def test_parse_decision_invalid_json_falls_back() -> None:
     assert decision.message
 
 
+def test_parse_decision_empty_json_object_falls_back() -> None:
+    decision = LLMClient._parse_decision("{}", nudge_count=1)
+    assert decision.should_nudge is True
+    assert decision.reason == "empty_json"
+    assert decision.message
+
+
 def test_build_system_prompt_fills_template() -> None:
     prompt = LLMClient.build_system_prompt(
         now=datetime(2026, 4, 15, 23, 30),
@@ -178,3 +185,27 @@ def test_extract_response_content_with_content_parts() -> None:
     decision = LLMClient._parse_decision(content, nudge_count=0)
     assert decision.should_nudge is True
     assert decision.message == "Wrap up now."
+
+
+def test_extract_response_content_uses_message_parsed_dict() -> None:
+    response = MagicMock(
+        choices=[
+            MagicMock(
+                message=MagicMock(
+                    content="",
+                    parsed={
+                        "activity_type": "productive",
+                        "should_nudge": True,
+                        "reason": "late night",
+                        "message": "Save your work and wind down.",
+                    },
+                    refusal=None,
+                )
+            )
+        ]
+    )
+    content = LLMClient._extract_response_content(response)
+    assert isinstance(content, dict)
+    decision = LLMClient._parse_decision(content, nudge_count=0)
+    assert decision.should_nudge is True
+    assert decision.message == "Save your work and wind down."
