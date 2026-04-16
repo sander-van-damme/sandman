@@ -184,7 +184,6 @@ class LLMClient:
                 messages=messages,
                 response_format={"type": "json_object"},
                 max_completion_tokens=300,
-                temperature=0.7,
             )
             content = response.choices[0].message.content or "{}"
         except Exception as exc:  # pragma: no cover - network/SDK errors

@@ -126,7 +126,6 @@ class LlmClient(
             put("messages", messages)
             put("response_format", buildJsonObject { put("type", "json_object") })
             put("max_tokens", 300)
-            put("temperature", 0.7)
         }.toString()
 
         try {
