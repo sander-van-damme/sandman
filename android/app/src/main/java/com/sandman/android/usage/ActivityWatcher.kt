@@ -43,7 +43,7 @@ object ActivityWatcher {
 
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val now = System.currentTimeMillis()
-        val events = usm.queryEvents(now - 10_000L, now)
+        val events = usm.queryEvents(now - 2 * 60 * 60 * 1000L, now)
 
         var latestPackage: String? = null
         val event = UsageEvents.Event()

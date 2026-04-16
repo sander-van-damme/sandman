@@ -216,6 +216,12 @@ class NudgeService : Service() {
                 emitStatus(MonitorState.ACTIVE, "No app data yet")
                 return
             }
+
+        if (app.packageName == applicationContext.packageName) {
+            emitStatus(MonitorState.ACTIVE, "Sandman is open")
+            return
+        }
+
         val activityKey = "${app.packageName}:${app.appLabel}"
 
         // 9) Same-activity dedup (3× min interval)
