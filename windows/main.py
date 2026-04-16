@@ -72,6 +72,7 @@ class SandmanApp:
         # Tasks that must execute on the Tk UI thread.
         self._ui_queue: queue.Queue[Callable[[], Any]] = queue.Queue()
         self._reply_window: ReplyWindow | None = None
+        self._settings_window: SettingsWindow | None = None
         self._tk_root: Any = None  # tk.Tk, lazily created on the UI thread
         self._ui_ready = threading.Event()
         self._ui_scale: float = 1.0
@@ -215,6 +216,15 @@ class SandmanApp:
     # ---- UI openers -----------------------------------------------------
 
     def _open_settings(self) -> None:
+        # If a settings window is already open, just bring it to the front.
+        if self._settings_window is not None and self._settings_window._root is not None:
+            try:
+                self._settings_window._root.lift()
+                self._settings_window._root.focus_force()
+                return
+            except Exception:
+                self._settings_window = None
+
         def _on_saved(cfg: Config) -> None:
             # Rebuild LLM client if key/model changed.
             self.llm_client.api_key = cfg.api_key
@@ -222,15 +232,21 @@ class SandmanApp:
             self.llm_client._client = None  # type: ignore[attr-defined]
             # Reset bucket cache in case hostname shifted.
             self.aw_client.reset_bucket_cache()
+            self._settings_window = None
             log.info("Settings saved — applied to live config")
+
+        def _on_close() -> None:
+            self._settings_window = None
 
         window = SettingsWindow(
             self.config,
             aw_client=self.aw_client,
             on_saved=_on_saved,
+            on_close=_on_close,
             parent=self._tk_root,
             ui_scale=self._ui_scale,
         )
+        self._settings_window = window
         window.open()
 
     def _open_chat(self) -> None:

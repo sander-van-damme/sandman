@@ -49,12 +49,14 @@ class SettingsWindow:
         *,
         aw_client: ActivityWatchClient | None = None,
         on_saved: Callable[[Config], None] | None = None,
+        on_close: Callable[[], None] | None = None,
         parent: tk.Misc | None = None,
         ui_scale: float = 1.0,
     ) -> None:
         self.config = config
         self.aw_client = aw_client or ActivityWatchClient()
         self.on_saved = on_saved
+        self.on_close = on_close
         self._parent = parent
         self._ui_scale = max(1.0, float(ui_scale))
         self._root: tk.Toplevel | tk.Tk | None = None
@@ -95,10 +97,7 @@ class SettingsWindow:
         h = int(640 * self._ui_scale)
         root.geometry(f"{w}x{h}")
         root.resizable(False, False)
-        try:
-            root.transient(self._parent) if self._parent is not None else None
-        except tk.TclError:
-            pass
+        root.protocol("WM_DELETE_WINDOW", self._on_cancel)
 
         self._init_vars()
 
@@ -122,6 +121,9 @@ class SettingsWindow:
         # Poll AW status every 2 seconds so the user sees live feedback.
         self._refresh_aw_status()
         root.after(2000, self._schedule_aw_refresh)
+
+        root.lift()
+        root.focus_force()
 
         if self._owns_root:
             root.mainloop()
@@ -479,3 +481,8 @@ class SettingsWindow:
         except tk.TclError:
             pass
         self._root = None
+        if self.on_close:
+            try:
+                self.on_close()
+            except Exception:
+                log.exception("on_close callback failed")
