@@ -130,6 +130,7 @@ class Monitor:
         activity = self._safe_current_window() or WindowActivity(
             app="unknown", title="", duration=0, timestamp=""
         )
+        log.info("Handling user reply, current app=%s", activity.app)
         system_prompt = self._build_system_prompt(activity)
         decision = self.llm_client.classify_and_nudge(
             system_prompt=system_prompt,
@@ -137,9 +138,16 @@ class Monitor:
             user_message=text,
             nudge_count=self.status.nudge_count,
         )
+        log.info(
+            "Reply decision: should_nudge=%s, message=%r",
+            decision.should_nudge,
+            decision.message[:120] if decision.message else "",
+        )
         self.history.add("user", text)
         if decision.message:
             self.history.add("assistant", decision.message)
+        else:
+            log.warning("LLM returned empty message for user reply")
         return decision
 
     # ---- main loop ------------------------------------------------------
@@ -254,7 +262,12 @@ class Monitor:
         )
 
         if not decision.should_nudge or not decision.message:
-            log.debug("LLM declined to nudge: %s", decision.reason)
+            log.info(
+                "LLM declined to nudge: should_nudge=%s, message_empty=%s, reason=%s",
+                decision.should_nudge,
+                not decision.message,
+                decision.reason,
+            )
             self._emit_status(
                 MonitorState.ACTIVE,
                 f"Watching ({decision.activity_type})",
@@ -262,6 +275,11 @@ class Monitor:
             return
 
         # 12) Fire the nudge.
+        log.info(
+            "Firing nudge #%d: %r",
+            self.status.nudge_count + 1,
+            decision.message[:120],
+        )
         self.status.nudge_count += 1
         self.status.last_nudge_at = now
         self._last_nudge_activity_key = activity_key

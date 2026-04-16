@@ -200,10 +200,17 @@ class SandmanApp:
         self.tray.update_state(status)
 
     def _on_nudge(self, decision: NudgeDecision) -> None:
+        log.info(
+            "on_nudge called: activity=%s, message=%r, reply_window_open=%s",
+            decision.activity_type,
+            decision.message[:120] if decision.message else "",
+            self._reply_window is not None,
+        )
         # Mirror the nudge into the reply window if it's open.
         if self._reply_window is not None:
             self._reply_window.queue_sandman_message(decision.message)
 
+        log.info("Showing toast notification")
         show_nudge_toast(
             decision.message,
             title="Sandman",
@@ -215,6 +222,7 @@ class SandmanApp:
             self.config.notifications.get("escalation_enabled", True)
             and self.monitor.status.nudge_count >= 7
         ):
+            log.info("Showing escalation overlay (nudge_count=%d)", self.monitor.status.nudge_count)
             self._ui_call(lambda: self._show_escalation_overlay(decision.message))
 
     def _on_toast_action(self, action: ToastAction) -> None:
@@ -285,7 +293,10 @@ class SandmanApp:
         log.info("User reply: %s", text)
         decision = self.monitor.handle_user_reply(text)
         if self._reply_window is not None and decision.message:
+            log.info("Queuing Sandman response to chat: %r", decision.message[:120])
             self._reply_window.queue_sandman_message(decision.message)
+        elif not decision.message:
+            log.warning("No message in LLM response to user reply — nothing to display")
 
     def _show_escalation_overlay(self, message: str) -> None:
         """Full-screen-ish overlay for high nudge counts."""

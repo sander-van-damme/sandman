@@ -179,6 +179,7 @@ class LLMClient:
 
         try:
             client = self._ensure_client()
+            log.info("Calling OpenAI model=%s with %d messages", self.model, len(messages))
             response = client.chat.completions.create(
                 model=self.model,
                 messages=messages,
@@ -186,11 +187,19 @@ class LLMClient:
                 max_completion_tokens=300,
             )
             content = self._extract_response_content(response)
+            log.info("LLM raw content: %s", content)
         except Exception as exc:  # pragma: no cover - network/SDK errors
             log.warning("OpenAI call failed: %s", exc)
             return NudgeDecision.fallback(nudge_count, reason=f"api_error: {exc}")
 
-        return self._parse_decision(content, nudge_count)
+        decision = self._parse_decision(content, nudge_count)
+        log.info(
+            "LLM decision: should_nudge=%s, activity=%s, message=%r",
+            decision.should_nudge,
+            decision.activity_type,
+            decision.message[:120] if decision.message else "",
+        )
+        return decision
 
     @staticmethod
     def _extract_response_content(response: Any) -> str | dict[str, Any]:
@@ -204,12 +213,16 @@ class LLMClient:
         try:
             message = response.choices[0].message
         except Exception:
+            log.warning("Failed to access response.choices[0].message — returning empty")
             return "{}"
 
         content = getattr(message, "content", None)
+        log.debug("Raw message.content type=%s", type(content).__name__)
         if isinstance(content, dict):
             return content
         if isinstance(content, str):
+            if not content:
+                log.warning("message.content is empty string")
             return content or "{}"
         if isinstance(content, list):
             text_parts: list[str] = []
@@ -228,7 +241,11 @@ class LLMClient:
                 text = part_dict.get("text") or part_dict.get("content")
                 if isinstance(text, str):
                     text_parts.append(text)
-            return "\n".join(p for p in text_parts if p).strip() or "{}"
+            joined = "\n".join(p for p in text_parts if p).strip()
+            if not joined:
+                log.warning("content list had %d parts but no extractable text", len(content))
+            return joined or "{}"
+        log.warning("Unexpected message.content type: %s", type(content).__name__)
         return "{}"
 
     @staticmethod
@@ -238,8 +255,9 @@ class LLMClient:
         try:
             raw = content if isinstance(content, dict) else json.loads(content)
         except (json.JSONDecodeError, TypeError) as exc:
-            log.warning("LLM returned non-JSON content: %s", exc)
+            log.warning("LLM returned non-JSON content: %r — error: %s", content, exc)
             return NudgeDecision.fallback(nudge_count, reason="invalid_json")
+        log.debug("Parsed JSON keys: %s", list(raw.keys()) if isinstance(raw, dict) else type(raw).__name__)
 
         return NudgeDecision(
             activity_type=str(raw.get("activity_type", "other")),
