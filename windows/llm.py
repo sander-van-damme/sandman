@@ -52,6 +52,8 @@ Respond in JSON format:
 """
 
 
+MAX_COMPLETION_TOKENS = 1200
+
 FALLBACK_MESSAGES = [
     "Hey, it's getting late. Consider wrapping up.",
     "Time's slipping away — your future self will thank you for stopping now.",
@@ -184,6 +186,7 @@ class LLMClient:
                 model=self.model,
                 messages=messages,
                 response_format={"type": "json_object"},
+                max_completion_tokens=MAX_COMPLETION_TOKENS,
             )
             log.debug("LLM raw API response: %s", self._serialize_response(response))
             content = self._extract_response_content(response)
