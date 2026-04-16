@@ -7,6 +7,7 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.PowerManager
+import android.telephony.TelephonyManager
 import android.util.Log
 import com.sandman.android.model.ForegroundApp
 
@@ -80,5 +81,11 @@ object ActivityWatcher {
     fun isDeviceLocked(context: Context): Boolean {
         val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
         return keyguard.isKeyguardLocked
+    }
+
+    /** Returns true if a phone call (incoming, outgoing, or ongoing) is active. */
+    fun isInCall(context: Context): Boolean {
+        val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+        return tm.callState != TelephonyManager.CALL_STATE_IDLE
     }
 }

@@ -201,6 +201,10 @@ class NudgeService : Service() {
             emitStatus(MonitorState.ACTIVE, "Device locked — holding off")
             return
         }
+        if (ActivityWatcher.isInCall(applicationContext)) {
+            emitStatus(MonitorState.ACTIVE, "On a call — holding off")
+            return
+        }
 
         // 7) Rate limit
         val minIntervalMs = prefs.minIntervalSeconds.first() * 1_000L
