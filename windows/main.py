@@ -10,6 +10,7 @@ chat, overlays). Other threads schedule work on the UI thread via the
 from __future__ import annotations
 
 import logging
+import logging.handlers
 import platform
 import queue
 import sys
@@ -36,9 +37,25 @@ log = logging.getLogger(__name__)
 
 
 def _setup_logging() -> None:
+    from pathlib import Path
+
+    log_dir = Path.home() / ".sandman"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "sandman.log"
+
+    fmt = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+        format=fmt,
+        handlers=[
+            logging.StreamHandler(),
+            logging.handlers.RotatingFileHandler(
+                log_file,
+                maxBytes=1 * 1024 * 1024,  # 1 MB
+                backupCount=2,
+                encoding="utf-8",
+            ),
+        ],
     )
 
 
