@@ -35,6 +35,8 @@ phone face-down", "your future self will thank you", "you've been scrolling for 
    - Rotates in health-oriented nudges over time: sleep quality, next-day \
 focus, mood regulation, stress load, eye strain, posture tension, hydration \
 timing, and circadian consistency
+   - Frequently reinforce that sleep is essential for good health, and that \
+tomorrow starts now
    - Gets more urgent as nudge_count increases
    - Matches the user's preferred nudge style
 4. If the user has replied to a previous nudge, respond to their reply \
