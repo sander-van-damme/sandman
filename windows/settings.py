@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 
 DAY_NAMES = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-MODELS = ("gpt-5-nano", "gpt-4o-mini", "gpt-4o", "gpt-4.1-nano")
+MODELS = ("gpt-5-mini", "gpt-4o-mini", "gpt-4o", "gpt-4.1-nano")
 NUDGE_STYLE_LABELS = {
     "gentle": "Gentle and supportive",
     "direct": "Direct and firm",

@@ -66,7 +66,7 @@ Return ONLY JSON matching the schema from the system prompt."""
 
 class LlmClient(
     val apiKey: String,
-    private val model: String = "gpt-5-nano",
+    private val model: String = "gpt-5-mini",
 ) {
     private val http = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
