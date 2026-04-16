@@ -28,8 +28,8 @@ class ReplyWindow:
     reply from another thread, push a message onto the queue via
     ``queue_sandman_message``.
 
-    The caller supplies ``on_user_reply``, which is invoked synchronously on
-    the tkinter thread with the user's text. The callback is expected to
+    The caller supplies ``on_user_reply``, which is invoked on a background
+    thread with the user's text. The callback is expected to
     produce Sandman's response and push it back via
     ``queue_sandman_message``.
     """
@@ -49,8 +49,13 @@ class ReplyWindow:
         self._root: tk.Toplevel | tk.Tk | None = None
         self._transcript: tk.Text | None = None
         self._entry: ttk.Entry | None = None
+        self._send_btn: ttk.Button | None = None
         self._incoming: queue.Queue[tuple[str, str]] = queue.Queue()
         self._lock = threading.Lock()
+        self._awaiting_response = False
+        self._typing_dots = 1
+        self._typing_job_id: str | None = None
+        self._typing_index: str | None = None
 
     # ---- lifecycle ------------------------------------------------------
 
@@ -170,6 +175,7 @@ class ReplyWindow:
         self._root = top
         self._transcript = transcript
         self._entry = entry
+        self._send_btn = send_btn
 
         if initial_sandman_message:
             self._append("sandman", initial_sandman_message)
@@ -187,6 +193,10 @@ class ReplyWindow:
         self._root = None
         self._transcript = None
         self._entry = None
+        self._send_btn = None
+        self._awaiting_response = False
+        self._typing_dots = 1
+        self._typing_index = None
         if getattr(self, "_hidden_root", None) is not None:
             try:
                 self._hidden_root.destroy()  # type: ignore[union-attr]
@@ -210,6 +220,8 @@ class ReplyWindow:
         try:
             while True:
                 role, msg = self._incoming.get_nowait()
+                if role == "sandman":
+                    self._stop_waiting_for_response()
                 self._append(role, msg)
         except queue.Empty:
             pass
@@ -228,10 +240,20 @@ class ReplyWindow:
             return
         self._entry.delete(0, tk.END)
         self._append("user", text)
-        try:
-            self._on_user_reply(text)
-        except Exception:
-            log.exception("on_user_reply handler failed")
+        self._start_waiting_for_response()
+
+        def _send() -> None:
+            try:
+                self._on_user_reply(text)
+            except Exception:
+                log.exception("on_user_reply handler failed")
+                if self._root is not None:
+                    try:
+                        self._root.after(0, self._stop_waiting_for_response)
+                    except tk.TclError:
+                        pass
+
+        threading.Thread(target=_send, daemon=True).start()
 
     def _bed_clicked(self) -> None:
         try:
@@ -247,3 +269,66 @@ class ReplyWindow:
         self._transcript.insert(tk.END, f"{prefix} {message}\n\n", role)
         self._transcript.see(tk.END)
         self._transcript.configure(state="disabled")
+
+    def _start_waiting_for_response(self) -> None:
+        if self._awaiting_response:
+            return
+        self._awaiting_response = True
+        self._typing_dots = 1
+        if self._entry is not None:
+            self._entry.configure(state="disabled")
+        if self._send_btn is not None:
+            self._send_btn.configure(text="Sending...", state="disabled")
+        self._show_typing_indicator()
+
+    def _stop_waiting_for_response(self) -> None:
+        if not self._awaiting_response:
+            return
+        self._awaiting_response = False
+        if self._entry is not None:
+            self._entry.configure(state="normal")
+            self._entry.focus_set()
+        if self._send_btn is not None:
+            self._send_btn.configure(text="Send", state="normal")
+        self._remove_typing_indicator()
+
+    def _show_typing_indicator(self) -> None:
+        if self._transcript is None or self._root is None:
+            return
+        self._transcript.configure(state="normal")
+        if self._typing_index is None:
+            self._typing_index = self._transcript.index(tk.END)
+            self._transcript.insert(tk.END, "Sandman is typing.\n\n", "sandman")
+        self._transcript.see(tk.END)
+        self._transcript.configure(state="disabled")
+        self._typing_job_id = self._root.after(350, self._animate_typing_indicator)
+
+    def _animate_typing_indicator(self) -> None:
+        if (
+            self._transcript is None
+            or self._root is None
+            or self._typing_index is None
+            or not self._awaiting_response
+        ):
+            return
+        dots = "." * self._typing_dots
+        self._typing_dots = (self._typing_dots % 3) + 1
+        self._transcript.configure(state="normal")
+        self._transcript.delete(self._typing_index, f"{self._typing_index} lineend")
+        self._transcript.insert(self._typing_index, f"Sandman is typing{dots}", "sandman")
+        self._transcript.see(tk.END)
+        self._transcript.configure(state="disabled")
+        self._typing_job_id = self._root.after(350, self._animate_typing_indicator)
+
+    def _remove_typing_indicator(self) -> None:
+        if self._root is not None and self._typing_job_id is not None:
+            try:
+                self._root.after_cancel(self._typing_job_id)
+            except tk.TclError:
+                pass
+        self._typing_job_id = None
+        if self._transcript is not None and self._typing_index is not None:
+            self._transcript.configure(state="normal")
+            self._transcript.delete(self._typing_index, f"{self._typing_index}+2l")
+            self._transcript.configure(state="disabled")
+        self._typing_index = None
