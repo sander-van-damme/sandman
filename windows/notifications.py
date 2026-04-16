@@ -57,6 +57,117 @@ class ReplyWindow:
         self._typing_job_id: str | None = None
         self._typing_index: str | None = None
 
+    def _apply_styles(self, top: tk.Toplevel) -> ttk.Style:
+        """Apply a modern dark theme to the popup."""
+        style = ttk.Style(top)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            # Fallback to whichever theme is available.
+            pass
+
+        base = max(10, int(10 * self._ui_scale))
+        title = max(14, int(16 * self._ui_scale))
+
+        font_body = ("Segoe UI", base)
+        font_title = ("Segoe UI Semibold", title)
+
+        colors = {
+            "bg": "#0f172a",
+            "surface": "#111827",
+            "surface_alt": "#1f2937",
+            "fg": "#e5e7eb",
+            "muted": "#9ca3af",
+            "accent": "#7c3aed",
+            "accent_active": "#6d28d9",
+            "accent_text": "#f5f3ff",
+            "border": "#334155",
+        }
+
+        top.configure(bg=colors["bg"])
+
+        style.configure(
+            "Nudge.Root.TFrame",
+            background=colors["bg"],
+        )
+        style.configure(
+            "Nudge.Card.TFrame",
+            background=colors["surface"],
+            borderwidth=1,
+            relief="solid",
+        )
+        style.configure(
+            "Nudge.Header.TFrame",
+            background=colors["surface"],
+        )
+        style.configure(
+            "Nudge.Compose.TFrame",
+            background=colors["surface_alt"],
+        )
+        style.configure(
+            "Nudge.Title.TLabel",
+            background=colors["surface"],
+            foreground=colors["fg"],
+            font=font_title,
+        )
+        style.configure(
+            "Nudge.Subtitle.TLabel",
+            background=colors["surface"],
+            foreground=colors["muted"],
+            font=font_body,
+        )
+        style.configure(
+            "Nudge.TButton",
+            font=font_body,
+            padding=(12, 7),
+            background=colors["accent"],
+            foreground=colors["accent_text"],
+            borderwidth=0,
+            relief="flat",
+        )
+        style.map(
+            "Nudge.TButton",
+            background=[
+                ("active", colors["accent_active"]),
+                ("pressed", colors["accent_active"]),
+                ("disabled", colors["surface_alt"]),
+            ],
+            foreground=[("disabled", colors["muted"])],
+        )
+        style.configure(
+            "Nudge.Secondary.TButton",
+            font=font_body,
+            padding=(10, 6),
+            background=colors["surface_alt"],
+            foreground=colors["fg"],
+            borderwidth=1,
+            relief="solid",
+        )
+        style.map(
+            "Nudge.Secondary.TButton",
+            background=[("active", "#273549"), ("pressed", "#273549")],
+            bordercolor=[("!disabled", colors["border"])],
+            foreground=[("disabled", colors["muted"])],
+        )
+        style.configure(
+            "Nudge.TEntry",
+            fieldbackground=colors["surface"],
+            foreground=colors["fg"],
+            insertcolor=colors["fg"],
+            bordercolor=colors["border"],
+            lightcolor=colors["border"],
+            darkcolor=colors["border"],
+            padding=(10, 7),
+            relief="flat",
+        )
+        style.map(
+            "Nudge.TEntry",
+            bordercolor=[("focus", colors["accent"])],
+            lightcolor=[("focus", colors["accent"])],
+            darkcolor=[("focus", colors["accent"])],
+        )
+        return style
+
     # ---- lifecycle ------------------------------------------------------
 
     def open(self, initial_sandman_message: str | None = None) -> None:
@@ -92,6 +203,7 @@ class ReplyWindow:
         top.minsize(int(260 * self._ui_scale), int(320 * self._ui_scale))
         top.attributes("-topmost", True)
         top.protocol("WM_DELETE_WINDOW", self.close)
+        self._apply_styles(top)
 
         # Position center-screen.
         top.update_idletasks()
@@ -102,29 +214,41 @@ class ReplyWindow:
         top.geometry(f"{w}x{h}+{x}+{y}")
 
         # Container so we can rely on grid for a clean bottom-entry layout.
-        container = ttk.Frame(top)
+        container = ttk.Frame(top, style="Nudge.Root.TFrame")
         container.pack(fill="both", expand=True)
-        container.rowconfigure(1, weight=1)
+        container.rowconfigure(0, weight=1)
         container.columnconfigure(0, weight=1)
 
-        header = ttk.Frame(container)
-        header.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
+        card = ttk.Frame(container, style="Nudge.Card.TFrame", padding=14)
+        card.grid(row=0, column=0, sticky="nsew", padx=14, pady=14)
+        card.rowconfigure(1, weight=1)
+        card.columnconfigure(0, weight=1)
+
+        header = ttk.Frame(card, style="Nudge.Header.TFrame")
+        header.grid(row=0, column=0, sticky="ew", padx=2, pady=(2, 10))
         header.columnconfigure(0, weight=1)
         title = ttk.Label(
             header,
             text="It's wind-down time 🌙",
-            font=("Segoe UI", int(15 * self._ui_scale), "bold"),
+            style="Nudge.Title.TLabel",
         )
         title.grid(row=0, column=0, sticky="w")
+        subtitle = ttk.Label(
+            header,
+            text="Take a breath. A quick check-in before bedtime.",
+            style="Nudge.Subtitle.TLabel",
+        )
+        subtitle.grid(row=1, column=0, sticky="w", pady=(4, 0))
         bed_btn = ttk.Button(
             header,
-            text="I'm going to bed",
+            text="🌙 I'm going to bed",
             command=self._bed_clicked,
+            style="Nudge.TButton",
         )
-        bed_btn.grid(row=0, column=1, sticky="e")
+        bed_btn.grid(row=0, column=1, rowspan=2, sticky="e")
 
-        transcript_frame = ttk.Frame(container)
-        transcript_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(8, 0))
+        transcript_frame = ttk.Frame(card, style="Nudge.Compose.TFrame")
+        transcript_frame.grid(row=1, column=0, sticky="nsew", pady=(0, 10))
         transcript_frame.rowconfigure(0, weight=1)
         transcript_frame.columnconfigure(0, weight=1)
 
@@ -132,24 +256,24 @@ class ReplyWindow:
             transcript_frame,
             wrap="word",
             state="disabled",
-            bg="#111827",
-            fg="#e6e6f0",
-            padx=8,
-            pady=8,
+            bg="#0b1220",
+            fg="#e5e7eb",
+            padx=10,
+            pady=10,
             bd=0,
             highlightthickness=0,
-            font=("Segoe UI", 10),
+            font=("Segoe UI", max(10, int(10 * self._ui_scale))),
         )
         transcript.tag_configure(
             "sandman",
             justify="left",
-            foreground="#9ec5fe",
+            foreground="#bfdbfe",
             spacing3=4,
         )
         transcript.tag_configure(
             "user",
             justify="right",
-            foreground="#f8c4b4",
+            foreground="#fbcfe8",
             spacing3=4,
         )
         transcript.grid(row=0, column=0, sticky="nsew")
@@ -160,14 +284,17 @@ class ReplyWindow:
         scrollbar.grid(row=0, column=1, sticky="ns")
         transcript.configure(yscrollcommand=scrollbar.set)
 
-        entry_frame = ttk.Frame(container)
-        entry_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=10)
+        entry_frame = ttk.Frame(card, style="Nudge.Compose.TFrame", padding=8)
+        entry_frame.grid(row=2, column=0, sticky="ew")
         entry_frame.columnconfigure(0, weight=1)
-        entry = ttk.Entry(entry_frame)
+        entry = ttk.Entry(entry_frame, style="Nudge.TEntry")
         entry.grid(row=0, column=0, sticky="ew")
         entry.bind("<Return>", lambda _e: self._send_from_entry())
         send_btn = ttk.Button(
-            entry_frame, text="Send", command=self._send_from_entry
+            entry_frame,
+            text="Send",
+            command=self._send_from_entry,
+            style="Nudge.Secondary.TButton",
         )
         send_btn.grid(row=0, column=1, padx=(6, 0))
         entry.focus_set()
