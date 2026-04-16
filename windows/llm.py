@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -66,6 +66,79 @@ Current context (latest only):
 
 Return ONLY JSON matching the schema from the system prompt.
 """
+
+
+# Rotated daily by day-of-year so the model approaches each session through a
+# different behavioral-psychology lens. One full cycle = 14 days.
+DAILY_FOCUS_INJECTIONS = [
+    # 0 — sleep architecture / memory consolidation
+    "Today's lens — sleep architecture: Memory consolidation and metabolic waste "
+    "clearance happen almost exclusively in deep slow-wave sleep, which is "
+    "front-loaded in the night. Frame every lost hour now as cutting the most "
+    "restorative phase first.",
+    # 1 — identity-based habits (James Clear)
+    "Today's lens — identity: Each step toward bed is a vote for who the user is "
+    "becoming. Reinforce that sleeping on time is not a sacrifice — it is evidence "
+    "of someone who respects their own recovery.",
+    # 2 — emotional regulation (amygdala reactivity)
+    "Today's lens — emotional resilience: Sleep deprivation amplifies amygdala "
+    "reactivity by up to 60%, making tomorrow's frustrations feel "
+    "disproportionate. Frame going to bed as protecting tomorrow's patience, "
+    "empathy, and calm under pressure.",
+    # 3 — social performance (warmth / trust perception)
+    "Today's lens — social ability: Sleep-deprived people are rated as less warm, "
+    "less trustworthy, and harder to connect with. Frame sleeping now as an "
+    "investment in tomorrow's relationships, conversations, and the impression "
+    "they make on others.",
+    # 4 — cognitive peak performance
+    "Today's lens — cognitive peak: Even mild sleep debt measurably reduces "
+    "working memory, attention, and creative output. Frame bedtime as priming "
+    "tomorrow's sharpest thinking — the work is not done until the brain is "
+    "recharged.",
+    # 5 — implementation intentions (Gollwitzer)
+    "Today's lens — implementation intentions: 'When X happens, I will do Y' "
+    "plans double follow-through rates. Encourage the user to commit to one "
+    "specific trigger-action right now, e.g. 'When I set the laptop down, I will "
+    "plug it in and close my eyes.'",
+    # 6 — physical recovery (HGH, immune, repair)
+    "Today's lens — physical recovery: Growth hormone peaks in the first sleep "
+    "cycle; muscles repair and immune cells activate during deep sleep. Staying "
+    "up is skipping the body's nightly maintenance window — with compounding "
+    "interest.",
+    # 7 — loss aversion (Kahneman)
+    "Today's lens — loss aversion: Losses hurt roughly twice as much as "
+    "equivalent gains feel good. Reframe staying up not as gaining time, but as "
+    "actively losing cognitive capacity, mood stability, and immune defence — "
+    "concrete assets being eroded right now.",
+    # 8 — circadian alignment / consistency
+    "Today's lens — circadian alignment: The body clock governs cortisol, "
+    "melatonin, body temperature, and hundreds of downstream processes. Irregular "
+    "sleep timing shifts the circadian phase and compounds into chronic fatigue. "
+    "Frame consistent timing as a long-term competitive advantage.",
+    # 9 — social proof / high-performer norms
+    "Today's lens — high-performer norms: Elite athletes, surgeons, and peak "
+    "performers treat sleep as non-negotiable. Going to bed on time is the quiet "
+    "discipline behind sustained excellence. Frame it as joining that standard.",
+    # 10 — temptation bundling (Milkman)
+    "Today's lens — temptation bundling: Pair winding down with something "
+    "genuinely enjoyable — a favourite podcast, a chapter of a book, a breathing "
+    "exercise. Nudge the user toward associating bedtime with reward and pleasure, "
+    "not loss.",
+    # 11 — stress physiology (cortisol / HPA axis)
+    "Today's lens — stress regulation: Late-night screens keep cortisol elevated "
+    "and the nervous system in low-level alert mode, making sleep harder and "
+    "amplifying next-day anxiety. Frame winding down as actively down-regulating "
+    "the stress response.",
+    # 12 — future self continuity (Hershfield)
+    "Today's lens — future self: People treat their future self like a stranger. "
+    "Help the user feel connected to the person waking up tomorrow — choices made "
+    "now are gifts or burdens left for that person. Make tonight's choice a gift.",
+    # 13 — habit loop (Duhigg, cue-routine-reward)
+    "Today's lens — habit loops: Every consistent bedtime strengthens the "
+    "cue-routine-reward circuit that makes future sleep feel natural and "
+    "automatic. Tonight's action is not just about tonight — it is training the "
+    "brain to crave sleep at this hour.",
+]
 
 
 FALLBACK_MESSAGES = [
@@ -152,9 +225,9 @@ class LLMClient:
     # ---- prompt building ------------------------------------------------
 
     @staticmethod
-    def build_system_prompt(
-    ) -> str:
-        return SYSTEM_PROMPT_TEMPLATE
+    def build_system_prompt(today: date | None = None) -> str:
+        idx = (today or date.today()).timetuple().tm_yday % len(DAILY_FOCUS_INJECTIONS)
+        return SYSTEM_PROMPT_TEMPLATE + DAILY_FOCUS_INJECTIONS[idx] + "\n"
 
     @staticmethod
     def build_turn_context_message(
