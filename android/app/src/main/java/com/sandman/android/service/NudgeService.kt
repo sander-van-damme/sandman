@@ -336,13 +336,11 @@ class NudgeService : Service() {
 
     // ---- helpers ---------------------------------------------------------
 
-    private fun ensureLlmClient(apiKey: String) {
+    private suspend fun ensureLlmClient(apiKey: String) {
         val existing = llmClient
         if (existing == null || existing.apiKey != apiKey) {
-            scope.launch {
-                val model = prefs.model.first()
-                llmClient = LlmClient(apiKey, model)
-            }
+            val model = prefs.model.first()
+            llmClient = LlmClient(apiKey, model)
         }
     }
 

@@ -26,6 +26,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sandman.android.data.*
 import com.sandman.android.service.NudgeService
 import com.sandman.android.usage.ActivityWatcher
+import com.sandman.android.util.DebugLogExporter
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -224,6 +225,15 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                 ButtonDefaults.buttonColors(),
         ) {
             Text(if (serviceEnabled) "Stop monitoring" else "Start monitoring")
+        }
+
+        // ---- Debug ----------------------------------------------------------
+        SectionHeader("Debug")
+        OutlinedButton(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = { DebugLogExporter.share(context) },
+        ) {
+            Text("Export debug logs")
         }
 
         Spacer(modifier = Modifier.height(24.dp))
