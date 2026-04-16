@@ -213,6 +213,7 @@ class LLMClient:
         - plain string (classic chat completions)
         - content-part list (e.g. [{"type":"text","text":"..."}])
         - already-decoded object
+        - parsed JSON on ``message.parsed`` when structured outputs are used
         """
         try:
             choice = response.choices[0]
@@ -232,6 +233,12 @@ class LLMClient:
         refusal = getattr(message, "refusal", None)
         if refusal:
             log.warning("Model refused request: %s", refusal)
+
+        parsed = getattr(message, "parsed", None)
+        if isinstance(parsed, dict):
+            if parsed:
+                return parsed
+            log.warning("message.parsed is an empty dict")
 
         if isinstance(content, dict):
             return content
@@ -263,6 +270,10 @@ class LLMClient:
         if content is None:
             log.warning("message.content is None")
             return ""
+        if not content and parsed:
+            # Some SDKs expose parsed structured output even when content is falsey.
+            if isinstance(parsed, dict):
+                return parsed
         log.warning("Unexpected message.content type: %s", type(content).__name__)
         return ""
 
@@ -275,6 +286,9 @@ class LLMClient:
         except (json.JSONDecodeError, TypeError) as exc:
             log.warning("LLM returned non-JSON content: %r — error: %s", content, exc)
             return NudgeDecision.fallback(nudge_count, reason="invalid_json")
+        if not isinstance(raw, dict) or not raw:
+            log.warning("LLM returned empty or non-object JSON: %r", raw)
+            return NudgeDecision.fallback(nudge_count, reason="empty_json")
         log.debug("Parsed JSON keys: %s", list(raw.keys()) if isinstance(raw, dict) else type(raw).__name__)
 
         return NudgeDecision(
