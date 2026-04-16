@@ -11,13 +11,11 @@ import com.sandman.android.data.minutesPastBedtime
 import com.sandman.android.llm.LlmClient
 import com.sandman.android.model.ConversationHistory
 import com.sandman.android.model.MonitorState
-import com.sandman.android.model.NudgeDecision
 import com.sandman.android.notifications.NudgeNotifier
 import com.sandman.android.notifications.STATUS_NOTIF_ID
 import com.sandman.android.usage.ActivityWatcher
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
-import java.time.DayOfWeek
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -42,12 +40,6 @@ class NudgeService : Service() {
 
         const val EXTRA_PAUSE_MINUTES = "pause_minutes"
         const val EXTRA_REPLY_TEXT = "reply_text"
-
-        /** SharedFlow used to push new chat messages to the UI. */
-        val chatFlow = kotlinx.coroutines.flow.MutableSharedFlow<Pair<String, String>>(
-            replay = 20,
-            extraBufferCapacity = 10,
-        )
     }
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -205,6 +197,10 @@ class NudgeService : Service() {
             emitStatus(MonitorState.ACTIVE, "Screen off — holding off")
             return
         }
+        if (ActivityWatcher.isDeviceLocked(applicationContext)) {
+            emitStatus(MonitorState.ACTIVE, "Device locked — holding off")
+            return
+        }
 
         // 7) Rate limit
         val minIntervalMs = prefs.minIntervalSeconds.first() * 1_000L
@@ -270,13 +266,6 @@ class NudgeService : Service() {
         val escalation = prefs.escalationEnabled.first()
         NudgeNotifier.showNudge(applicationContext, decision.message, nudgeCount, escalation)
 
-        // Broadcast to chat UI
-        scope.launch {
-            chatFlow.emit("sandman" to decision.message)
-            if (!decision.followUpQuestion.isNullOrBlank()) {
-                chatFlow.emit("sandman" to decision.followUpQuestion)
-            }
-        }
     }
 
     // ---- reply handling --------------------------------------------------
@@ -306,7 +295,6 @@ class NudgeService : Service() {
         )
 
         history.add("user", text)
-        chatFlow.emit("user" to text)
 
         val decision = llmClient!!.classifyAndNudge(
             systemPrompt = systemPrompt,
@@ -317,10 +305,19 @@ class NudgeService : Service() {
 
         if (decision.message.isNotBlank()) {
             history.add("assistant", decision.message)
-            chatFlow.emit("sandman" to decision.message)
 
             val escalation = prefs.escalationEnabled.first()
             NudgeNotifier.showNudge(applicationContext, decision.message, nudgeCount, escalation)
+        }
+
+        val requestedExtension = decision.extensionMinutes
+        if (requestedExtension != null) {
+            val maxAllowed = computeRemainingActiveWindowMinutes(now, activeFrom, prefs.activeUntil.first())
+            val granted = minOf(requestedExtension, maxAllowed).coerceAtLeast(0)
+            if (granted > 0) {
+                pausedUntilMs = System.currentTimeMillis() + granted * 60_000L
+                emitStatus(MonitorState.IDLE, "Extension granted: ${granted}m")
+            }
         }
     }
 
@@ -365,8 +362,28 @@ class NudgeService : Service() {
         history.clear()
     }
 
+    private fun computeRemainingActiveWindowMinutes(
+        now: LocalDateTime,
+        activeFrom: String,
+        activeUntil: String,
+    ): Int {
+        val start = LocalTime.parse(activeFrom, timeFmt)
+        val end = LocalTime.parse(activeUntil, timeFmt)
+        val nowTime = now.toLocalTime()
+
+        val endDateTime = if (start <= end) {
+            now.toLocalDate().atTime(end)
+        } else if (nowTime >= start) {
+            now.toLocalDate().plusDays(1).atTime(end)
+        } else {
+            now.toLocalDate().atTime(end)
+        }
+
+        val diffMs = java.time.Duration.between(now, endDateTime).toMillis()
+        return (diffMs / 60_000L).toInt().coerceAtLeast(0)
+    }
+
     private fun emitStatus(state: MonitorState, message: String) {
         NudgeNotifier.updateStatus(applicationContext, state, message)
     }
 }
-

@@ -1,6 +1,7 @@
 package com.sandman.android.usage
 
 import android.app.AppOpsManager
+import android.app.KeyguardManager
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
@@ -73,5 +74,11 @@ object ActivityWatcher {
     fun isScreenOn(context: Context): Boolean {
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         return pm.isInteractive
+    }
+
+    /** Returns true if the device is currently locked. */
+    fun isDeviceLocked(context: Context): Boolean {
+        val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+        return keyguard.isKeyguardLocked
     }
 }

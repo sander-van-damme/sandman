@@ -17,7 +17,6 @@ import java.util.concurrent.TimeUnit
 private const val TAG = "LlmClient"
 private const val OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
-// Ported verbatim from sandman/llm.py SYSTEM_PROMPT_TEMPLATE
 private const val SYSTEM_PROMPT_TEMPLATE = """You are Sandman, a bedtime coach built on behavioral psychology principles \
 (BJ Fogg's Behavior Model, habit stacking, commitment devices, implementation \
 intentions). The user has asked you to help them get to bed on time.
@@ -42,10 +41,15 @@ setting an alarm). Use good judgment.
    - Uses a behavioral psychology technique (e.g., "just one tiny step: put the \
 phone face-down", "your future self will thank you", "you've been scrolling for \
 20 minutes — diminishing returns have kicked in")
+   - Rotates in health-oriented nudges over time: sleep quality, next-day \
+focus, mood regulation, stress load, eye strain, posture tension, hydration \
+timing, and circadian consistency
    - Gets more urgent as nudge_count increases
    - Matches the user's preferred nudge style
 4. If the user has replied to a previous nudge, respond to their reply \
 conversationally while still guiding them toward bed.
+5. If the user asks for an extension, you may grant one only when justified. \
+When granting, include "extension_minutes" as a positive integer.
 
 Respond in JSON format:
 {
@@ -53,7 +57,8 @@ Respond in JSON format:
   "should_nudge": true/false,
   "reason": "brief explanation of why or why not",
   "message": "the nudge message to show (only if should_nudge is true)",
-  "follow_up_question": "optional question to engage the user, e.g. 'What is keeping you going right now?'"
+  "follow_up_question": "optional question to engage the user, e.g. 'What is keeping you going right now?'",
+  "extension_minutes": 0
 }"""
 
 class LlmClient(
@@ -92,10 +97,6 @@ class LlmClient(
         )
     }
 
-    /**
-     * Call the OpenAI Chat Completions API and return a [NudgeDecision].
-     * On any error returns a fallback decision — callers never handle exceptions.
-     */
     suspend fun classifyAndNudge(
         systemPrompt: String,
         history: ConversationHistory,
@@ -113,7 +114,7 @@ class LlmClient(
                     put("content", msg["content"] ?: "")
                 }
             }
-            if (userMessage != null) {
+            if (!userMessage.isNullOrBlank()) {
                 addJsonObject {
                     put("role", "user")
                     put("content", userMessage)
@@ -125,7 +126,6 @@ class LlmClient(
             put("model", model)
             put("messages", messages)
             put("response_format", buildJsonObject { put("type", "json_object") })
-            put("max_tokens", 300)
         }.toString()
 
         try {
@@ -136,59 +136,84 @@ class LlmClient(
                 .post(body.toRequestBody("application/json".toMediaType()))
                 .build()
 
-            val response = http.newCall(request).execute()
-            val responseBody = response.body?.string() ?: "{}"
+            http.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string() ?: "{}"
 
-            if (!response.isSuccessful) {
-                Log.w(TAG, "OpenAI returned ${response.code}: $responseBody")
-                return@withContext NudgeDecision.fallback(nudgeCount, "api_error: ${response.code}")
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "OpenAI returned ${response.code}: $responseBody")
+                    return@withContext NudgeDecision.fallback(nudgeCount, "api_error: ${response.code}")
+                }
+
+                val root = json.parseToJsonElement(responseBody).jsonObject
+                val content = extractResponseContent(root)
+                if (content == null) {
+                    Log.w(TAG, "LLM returned empty content")
+                    return@withContext NudgeDecision.fallback(nudgeCount, "empty_response")
+                }
+
+                parseDecision(content, nudgeCount)
             }
-
-            val root = json.parseToJsonElement(responseBody).jsonObject
-            val content = extractContent(root)
-
-            parseDecision(content, nudgeCount)
         } catch (e: Exception) {
             Log.w(TAG, "OpenAI call failed", e)
             NudgeDecision.fallback(nudgeCount, "exception: ${e.message}")
         }
     }
 
-    private fun extractContent(root: JsonObject): String {
-        val content = root["choices"]
-            ?.jsonArray?.firstOrNull()
-            ?.jsonObject?.get("message")
-            ?.jsonObject?.get("content")
-            ?: return "{}"
+    private fun extractResponseContent(root: JsonObject): JsonElement? {
+        val choice = root["choices"]?.jsonArray?.firstOrNull()?.jsonObject ?: return null
+        val message = choice["message"]?.jsonObject ?: return null
 
+        val parsed = message["parsed"]
+        if (parsed is JsonObject && parsed.isNotEmpty()) {
+            return parsed
+        }
+
+        val content = message["content"] ?: return null
         return when (content) {
-            is JsonPrimitive -> content.content
-            is JsonObject -> content.toString()
+            is JsonObject -> content
+            is JsonPrimitive -> content.contentOrNull?.takeIf { it.isNotBlank() }?.let { JsonPrimitive(it) }
             is JsonArray -> {
-                content.mapNotNull { part ->
+                val text = content.mapNotNull { part ->
                     val obj = part as? JsonObject ?: return@mapNotNull null
                     obj["text"]?.jsonPrimitive?.contentOrNull
                         ?: obj["content"]?.jsonPrimitive?.contentOrNull
-                }.joinToString("\n").ifBlank { "{}" }
+                }.joinToString("\n").trim()
+                text.takeIf { it.isNotBlank() }?.let { JsonPrimitive(it) }
             }
 
-            else -> "{}"
+            else -> null
         }
     }
 
-    private fun parseDecision(content: String, nudgeCount: Int): NudgeDecision {
-        return try {
-            val obj = json.parseToJsonElement(content).jsonObject
-            NudgeDecision(
-                activityType = obj["activity_type"]?.jsonPrimitive?.content ?: "other",
-                shouldNudge = obj["should_nudge"]?.jsonPrimitive?.boolean ?: false,
-                reason = obj["reason"]?.jsonPrimitive?.content ?: "",
-                message = obj["message"]?.jsonPrimitive?.content ?: "",
-                followUpQuestion = obj["follow_up_question"]?.jsonPrimitive?.contentOrNull,
-            )
+    private fun parseDecision(content: JsonElement, nudgeCount: Int): NudgeDecision {
+        val obj = try {
+            when (content) {
+                is JsonObject -> content
+                is JsonPrimitive -> json.parseToJsonElement(content.content).jsonObject
+                else -> return NudgeDecision.fallback(nudgeCount, "invalid_json")
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse LLM response", e)
-            NudgeDecision.fallback(nudgeCount, "invalid_json")
+            return NudgeDecision.fallback(nudgeCount, "invalid_json")
         }
+
+        if (obj.isEmpty()) {
+            return NudgeDecision.fallback(nudgeCount, "empty_json")
+        }
+
+        return NudgeDecision(
+            activityType = obj["activity_type"]?.jsonPrimitive?.content ?: "other",
+            shouldNudge = obj["should_nudge"]?.jsonPrimitive?.booleanOrNull ?: false,
+            reason = obj["reason"]?.jsonPrimitive?.content ?: "",
+            message = obj["message"]?.jsonPrimitive?.content ?: "",
+            followUpQuestion = obj["follow_up_question"]?.jsonPrimitive?.contentOrNull,
+            extensionMinutes = parseExtensionMinutes(obj["extension_minutes"]),
+        )
+    }
+
+    private fun parseExtensionMinutes(value: JsonElement?): Int? {
+        val primitive = value as? JsonPrimitive ?: return null
+        val minutes = primitive.intOrNull ?: primitive.contentOrNull?.toIntOrNull() ?: return null
+        return minutes.takeIf { it > 0 }
     }
 }
