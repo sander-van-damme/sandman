@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 from unittest.mock import MagicMock
 
-from windows.llm import ConversationHistory, LLMClient, NudgeDecision
+from windows.llm import DAILY_FOCUS_INJECTIONS, ConversationHistory, LLMClient, NudgeDecision
 
 
 def test_conversation_history_trims() -> None:
@@ -64,6 +64,31 @@ def test_build_system_prompt_includes_json_contract() -> None:
     prompt = LLMClient.build_system_prompt()
     assert "Respond in JSON format" in prompt
     assert "activity_type" in prompt
+
+
+def test_build_system_prompt_daily_injection_varies() -> None:
+    day_a = date(2026, 1, 1)   # day-of-year 1
+    day_b = date(2026, 1, 2)   # day-of-year 2
+    prompt_a = LLMClient.build_system_prompt(today=day_a)
+    prompt_b = LLMClient.build_system_prompt(today=day_b)
+    assert prompt_a != prompt_b
+    assert DAILY_FOCUS_INJECTIONS[1 % len(DAILY_FOCUS_INJECTIONS)] in prompt_a
+    assert DAILY_FOCUS_INJECTIONS[2 % len(DAILY_FOCUS_INJECTIONS)] in prompt_b
+
+
+def test_build_system_prompt_daily_injection_cycles() -> None:
+    n = len(DAILY_FOCUS_INJECTIONS)
+    # Two dates exactly n days apart should produce identical prompts.
+    day_a = date(2026, 1, 1)
+    day_b = date(2026, 1, 1).replace(year=2026)
+    yday_a = day_a.timetuple().tm_yday
+    # Find a date whose day-of-year is yday_a + n (may cross year boundary).
+    from datetime import timedelta
+    day_c = day_a + timedelta(days=n)
+    assert (
+        LLMClient.build_system_prompt(today=day_a)
+        == LLMClient.build_system_prompt(today=day_c)
+    )
 
 
 def test_build_turn_context_message_fills_template() -> None:
