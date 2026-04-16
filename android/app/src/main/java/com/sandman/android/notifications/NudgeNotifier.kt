@@ -34,6 +34,7 @@ object NudgeNotifier {
                 description = "Sandman nudges to help you get to bed"
                 enableLights(true)
                 enableVibration(true)
+                vibrationPattern = longArrayOf(0, 250, 250, 250)
             },
         )
 
@@ -135,6 +136,8 @@ object NudgeNotifier {
         }
 
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        // Cancel first so Android treats it as a new notification and shows the heads-up banner
+        nm.cancel(NUDGE_NOTIF_ID)
         nm.notify(NUDGE_NOTIF_ID, builder.build())
     }
 }
