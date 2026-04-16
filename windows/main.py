@@ -210,9 +210,14 @@ class SandmanApp:
         # Mirror the nudge into the reply window if it's open.
         if self._reply_window is not None:
             self._reply_window.queue_sandman_message(decision.message)
-
-        log.info("Opening center popup notification")
-        self._ui_call(lambda: self._open_chat(decision.message))
+            log.info("Opening center popup notification")
+            # Don't pass the message here — it's already queued above and _drain_queue
+            # will display it. Passing it would cause open() to _append it directly,
+            # resulting in the message appearing twice.
+            self._ui_call(lambda: self._open_chat())
+        else:
+            log.info("Opening center popup notification")
+            self._ui_call(lambda: self._open_chat(decision.message))
 
         # Escalation overlay at 7+ nudges.
         if (
