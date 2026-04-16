@@ -24,7 +24,6 @@ from .llm import LLMClient, NudgeDecision
 from .monitor import Monitor, MonitorStatus
 from .notifications import (
     ACTION_BED,
-    ACTION_REPLY,
     ACTION_SNOOZE,
     ReplyWindow,
     ToastAction,
@@ -88,7 +87,6 @@ class SandmanApp:
 
         self.tray = SandmanTray(
             on_open_settings=lambda: self._ui_call(self._open_settings),
-            on_open_chat=lambda: self._ui_call(self._open_chat),
             on_pause_30=lambda: self.monitor.pause_for(30),
             on_pause_tomorrow=self.monitor.pause_until_tomorrow,
             on_resume=self.monitor.resume,
@@ -237,15 +235,11 @@ class SandmanApp:
     def _on_toast_action(self, action: ToastAction) -> None:
         log.info("Toast action: %s", action.action)
         if action.action == ACTION_BED:
+            self.monitor.record_notification_response("I'm going to bed")
             self.monitor.pause_until_tomorrow()
         elif action.action == ACTION_SNOOZE:
+            self.monitor.record_notification_response("5 more minutes")
             self.monitor.pause_for(5)
-        elif action.action == ACTION_REPLY:
-            self._ui_call(self._open_chat)
-            if action.user_input:
-                self._ui_call(
-                    lambda text=action.user_input: self._handle_chat_reply(text)
-                )
 
     # ---- UI openers -----------------------------------------------------
 

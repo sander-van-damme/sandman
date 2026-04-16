@@ -26,7 +26,6 @@ log = logging.getLogger(__name__)
 # Button identifiers returned by the toast. These strings double as the
 # "arguments" attached to each action button, which is what win11toast hands
 # us back through its callback.
-ACTION_REPLY = "sandman:reply"
 ACTION_BED = "sandman:bed"
 ACTION_SNOOZE = "sandman:snooze5"
 
@@ -48,7 +47,7 @@ def show_nudge_toast(
     title: str = "Sandman",
     on_action: ToastCallback | None = None,
 ) -> None:
-    """Display a persistent toast with Reply / Bed / Snooze buttons.
+    """Display a persistent toast with Bed / Snooze buttons.
 
     On non-Windows platforms this is a no-op that just logs the message,
     which keeps development and tests portable.
@@ -65,7 +64,6 @@ def show_nudge_toast(
         return
 
     buttons = [
-        {"activationType": "background", "content": "Reply", "arguments": ACTION_REPLY},
         {"activationType": "background", "content": "I'm going to bed", "arguments": ACTION_BED},
         {"activationType": "background", "content": "5 more minutes", "arguments": ACTION_SNOOZE},
     ]

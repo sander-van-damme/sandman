@@ -23,7 +23,6 @@ from typing import Callable
 from .activity_watch import ActivityWatchClient, ActivityWatchError, WindowActivity
 from .config import Config
 from .llm import ConversationHistory, LLMClient, NudgeDecision
-from .sleep_detect import SleepDetector
 
 log = logging.getLogger(__name__)
 
@@ -63,7 +62,8 @@ class Monitor:
 
     status: MonitorStatus = field(default_factory=MonitorStatus)
     history: ConversationHistory = field(default_factory=ConversationHistory)
-    sleep_detector: SleepDetector = field(default_factory=SleepDetector)
+    _pending_notification_responses: list[str] = field(default_factory=list)
+    _pending_lock: threading.Lock = field(default_factory=threading.Lock)
 
     _last_activity_key: tuple[str, str] | None = None
     _last_nudge_activity_key: tuple[str, str] | None = None
@@ -131,6 +131,7 @@ class Monitor:
             app="unknown", title="", duration=0, timestamp=""
         )
         log.info("Handling user reply, current app=%s", activity.app)
+        self._consume_pending_notification_responses()
         system_prompt = self._build_system_prompt(activity)
         decision = self.llm_client.classify_and_nudge(
             system_prompt=system_prompt,
@@ -150,6 +151,15 @@ class Monitor:
             log.warning("LLM returned empty message for user reply")
         return decision
 
+    def record_notification_response(self, response_text: str) -> None:
+        """Capture quick-action toast choices for the next LLM request."""
+        response = response_text.strip()
+        if not response:
+            return
+        log.info("Recorded notification response: %s", response)
+        with self._pending_lock:
+            self._pending_notification_responses.append(response)
+
     # ---- main loop ------------------------------------------------------
 
     def _run(self) -> None:
@@ -168,22 +178,19 @@ class Monitor:
     def _tick(self) -> None:
         now = datetime.now()
 
-        # 1) Sleep/wake detection (monotonic clock gap).
-        self.sleep_detector.tick()
-
-        # 2) Configuration sanity checks.
+        # 1) Configuration sanity checks.
         if not self.config.is_configured():
             self._emit_status(MonitorState.ERROR, "OpenAI API key not set")
             return
 
-        # 3) ActivityWatch connectivity.
+        # 2) ActivityWatch connectivity.
         if not self.aw_client.is_available():
             self.status.aw_connected = False
             self._emit_status(MonitorState.ERROR, "ActivityWatch not reachable")
             return
         self.status.aw_connected = True
 
-        # 4) Active window / pause checks.
+        # 3) Active window / pause checks.
         if self.is_paused(now):
             self._emit_status(MonitorState.IDLE, "Paused")
             return
@@ -193,15 +200,10 @@ class Monitor:
             self._emit_status(MonitorState.IDLE, "Outside active hours")
             return
 
-        # 5) Start a new session if this is our first tick today.
+        # 4) Start a new session if this is our first tick today.
         self._maybe_start_session(now)
 
-        # 6) Post-wake grace period — skip nudges briefly.
-        if self.sleep_detector.in_grace_period():
-            self._emit_status(MonitorState.ACTIVE, "Just woke up — holding off")
-            return
-
-        # 7) AFK check — don't nudge someone who isn't at their desk.
+        # 5) AFK check — don't nudge someone who isn't at their desk.
         afk = None
         try:
             afk = self.aw_client.current_afk()
@@ -215,7 +217,7 @@ class Monitor:
             self._emit_status(MonitorState.ACTIVE, "User is AFK")
             return
 
-        # 8) Rate limit: min interval between nudges.
+        # 6) Rate limit: min interval between nudges.
         min_interval = int(
             self.config.notifications.get("min_interval_seconds", 60)
         )
@@ -225,7 +227,7 @@ class Monitor:
                 self._emit_status(MonitorState.NUDGING, "Rate limited")
                 return
 
-        # 9) Fetch current window activity.
+        # 7) Fetch current window activity.
         try:
             activity = self.aw_client.current_window()
         except ActivityWatchError as exc:
@@ -238,7 +240,7 @@ class Monitor:
 
         activity_key = activity.key()
 
-        # 10) Activity-level deduplication: if the exact same activity as
+        # 8) Activity-level deduplication: if the exact same activity as
         #     the last nudge, wait 3× the minimum interval before re-nudging.
         if (
             self._last_nudge_activity_key == activity_key
@@ -253,7 +255,8 @@ class Monitor:
 
         self._last_activity_key = activity_key
 
-        # 11) Ask the LLM what to do.
+        # 9) Ask the LLM what to do.
+        self._consume_pending_notification_responses()
         system_prompt = self._build_system_prompt(activity)
         decision = self.llm_client.classify_and_nudge(
             system_prompt=system_prompt,
@@ -274,7 +277,7 @@ class Monitor:
             )
             return
 
-        # 12) Fire the nudge.
+        # 10) Fire the nudge.
         log.info(
             "Firing nudge #%d: %r",
             self.status.nudge_count + 1,
@@ -345,7 +348,22 @@ class Monitor:
         self.status.nudge_count = 0
         self.status.last_nudge_at = None
         self._last_nudge_activity_key = None
+        with self._pending_lock:
+            self._pending_notification_responses.clear()
         self.history.clear()
+
+    def _consume_pending_notification_responses(self) -> None:
+        with self._pending_lock:
+            pending = list(self._pending_notification_responses)
+            self._pending_notification_responses.clear()
+        for response in pending:
+            self.history.add(
+                "user",
+                (
+                    "Quick notification response: "
+                    f"{response}. (User clicked this from a toast action button.)"
+                ),
+            )
 
     def _emit_status(self, state: MonitorState, message: str) -> None:
         self.status.state = state
