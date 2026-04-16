@@ -58,6 +58,7 @@ class Monitor:
     llm_client: LLMClient
     on_nudge: NudgeCallback
     on_status: StatusCallback | None = None
+    is_alert_open: Callable[[], bool] | None = None
     poll_interval: float = 30.0
 
     status: MonitorStatus = field(default_factory=MonitorStatus)
@@ -149,6 +150,7 @@ class Monitor:
             self.history.add("assistant", decision.message)
         else:
             log.warning("LLM returned empty message for user reply")
+        self._apply_extension_if_any(decision)
         return decision
 
     def record_notification_response(self, response_text: str) -> None:
@@ -217,7 +219,12 @@ class Monitor:
             self._emit_status(MonitorState.ACTIVE, "User is AFK")
             return
 
-        # 6) Rate limit: min interval between nudges.
+        # 6) If an alert is already open, don't trigger additional nudges.
+        if self.is_alert_open is not None and self.is_alert_open():
+            self._emit_status(MonitorState.NUDGING, "Nudge popup open")
+            return
+
+        # 7) Rate limit: min interval between nudges.
         min_interval = int(
             self.config.notifications.get("min_interval_seconds", 60)
         )
@@ -227,7 +234,7 @@ class Monitor:
                 self._emit_status(MonitorState.NUDGING, "Rate limited")
                 return
 
-        # 7) Fetch current window activity.
+        # 8) Fetch current window activity.
         try:
             activity = self.aw_client.current_window()
         except ActivityWatchError as exc:
@@ -240,7 +247,7 @@ class Monitor:
 
         activity_key = activity.key()
 
-        # 8) Activity-level deduplication: if the exact same activity as
+        # 9) Activity-level deduplication: if the exact same activity as
         #     the last nudge, wait 3× the minimum interval before re-nudging.
         if (
             self._last_nudge_activity_key == activity_key
@@ -255,7 +262,7 @@ class Monitor:
 
         self._last_activity_key = activity_key
 
-        # 9) Ask the LLM what to do.
+        # 10) Ask the LLM what to do.
         self._consume_pending_notification_responses()
         system_prompt = self._build_system_prompt(activity)
         decision = self.llm_client.classify_and_nudge(
@@ -277,7 +284,7 @@ class Monitor:
             )
             return
 
-        # 10) Fire the nudge.
+        # 11) Fire the nudge.
         log.info(
             "Firing nudge #%d: %r",
             self.status.nudge_count + 1,
@@ -361,9 +368,42 @@ class Monitor:
                 "user",
                 (
                     "Quick notification response: "
-                    f"{response}. (User clicked this from a toast action button.)"
+                    f"{response}. (User clicked this from the popup.)"
                 ),
             )
+
+    def _apply_extension_if_any(self, decision: NudgeDecision) -> None:
+        if decision.extension_minutes is None or decision.extension_minutes <= 0:
+            return
+        now = datetime.now()
+        requested_until = now + timedelta(minutes=decision.extension_minutes)
+        capped_until = min(requested_until, self._current_active_window_end(now))
+        if capped_until <= now:
+            return
+        self._paused_until = capped_until
+        granted_minutes = int((capped_until - now).total_seconds() // 60)
+        self._emit_status(MonitorState.IDLE, f"Extension granted for {granted_minutes} min")
+
+    def _current_active_window_end(self, now: datetime) -> datetime:
+        start_t = self.config.active_from()
+        end_t = self.config.active_until()
+        if start_t <= end_t:
+            return now.replace(
+                hour=end_t.hour,
+                minute=end_t.minute,
+                second=0,
+                microsecond=0,
+            )
+        if now.time() >= start_t:
+            end_date = now + timedelta(days=1)
+        else:
+            end_date = now
+        return end_date.replace(
+            hour=end_t.hour,
+            minute=end_t.minute,
+            second=0,
+            microsecond=0,
+        )
 
     def _emit_status(self, state: MonitorState, message: str) -> None:
         self.status.state = state

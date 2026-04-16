@@ -1,106 +1,28 @@
-"""Windows toast notifications and the tkinter reply window.
+"""Tkinter-based nudge popup and reply chat UI.
 
-``notify`` wraps ``win11toast`` so the rest of the app doesn't have to care
-about which Windows toast library is available. The reply window
-(``ReplyWindow``) is a small always-on-top tkinter chat UI where the user
-can have a back-and-forth with Sandman.
+The nudge popup appears in the center of the screen, stays on top, and
+contains two interaction paths:
+1) a clear "I'm going to bed" commitment button
+2) a chat input box for free-form replies/negotiation
 """
 
 from __future__ import annotations
 
 import logging
-import platform
 import queue
 import threading
 import tkinter as tk
-from dataclasses import dataclass
 from tkinter import ttk
-from typing import Any, Callable
+from typing import Callable
 
 log = logging.getLogger(__name__)
 
 
-# ---- toast notifications --------------------------------------------------
-
-
-# Button identifiers returned by the toast. These strings double as the
-# "arguments" attached to each action button, which is what win11toast hands
-# us back through its callback.
-ACTION_BED = "sandman:bed"
-ACTION_SNOOZE = "sandman:snooze5"
-
-
-@dataclass
-class ToastAction:
-    """Represents a click on one of the toast action buttons."""
-
-    action: str
-    user_input: str | None = None
-
-
-ToastCallback = Callable[[ToastAction], None]
-
-
-def show_nudge_toast(
-    message: str,
-    *,
-    title: str = "Sandman",
-    on_action: ToastCallback | None = None,
-) -> None:
-    """Display a persistent toast with Bed / Snooze buttons.
-
-    On non-Windows platforms this is a no-op that just logs the message,
-    which keeps development and tests portable.
-    """
-    if platform.system() != "Windows":
-        log.info("[toast stub] %s: %s", title, message)
-        return
-
-    try:
-        from win11toast import toast  # type: ignore
-    except Exception as exc:  # pragma: no cover - import-time
-        log.warning("win11toast unavailable: %s — falling back to log", exc)
-        log.info("[toast] %s: %s", title, message)
-        return
-
-    buttons = [
-        {"activationType": "background", "content": "I'm going to bed", "arguments": ACTION_BED},
-        {"activationType": "background", "content": "5 more minutes", "arguments": ACTION_SNOOZE},
-    ]
-
-    def _callback(args: dict[str, Any]) -> None:
-        if on_action is None:
-            return
-        action = str(args.get("arguments", "") or "")
-        user_input = None
-        inputs = args.get("user_input") or {}
-        if isinstance(inputs, dict) and inputs:
-            # Grab the first free-form input value, if any.
-            user_input = next(iter(inputs.values()), None)
-        try:
-            on_action(ToastAction(action=action, user_input=user_input))
-        except Exception:  # pragma: no cover - user callback
-            log.exception("Toast action callback failed")
-
-    try:
-        log.info("Sending win11toast: %r", message[:120] if message else "")
-        toast(
-            title,
-            message,
-            buttons=buttons,
-            on_click=_callback,
-            duration="long",  # keeps it in Action Center
-        )
-        log.info("Toast displayed successfully")
-    except Exception as exc:  # pragma: no cover - toast runtime
-        log.warning("Failed to show toast: %s", exc)
-
-
-# ---- reply window ---------------------------------------------------------
+# ---- nudge popup ----------------------------------------------------------
 
 
 class ReplyWindow:
-    """Small always-on-top tkinter chat window for replying to Sandman.
+    """Elegant always-on-top popup with commitment button + chat.
 
     Designed to run on the main thread (tkinter's requirement). To send a
     reply from another thread, push a message onto the queue via
@@ -116,10 +38,12 @@ class ReplyWindow:
         self,
         *,
         on_user_reply: Callable[[str], None],
+        on_bed_clicked: Callable[[], None],
         parent: tk.Misc | None = None,
         ui_scale: float = 1.0,
     ) -> None:
         self._on_user_reply = on_user_reply
+        self._on_bed_clicked = on_bed_clicked
         self._parent = parent
         self._ui_scale = max(1.0, float(ui_scale))
         self._root: tk.Toplevel | tk.Tk | None = None
@@ -155,8 +79,8 @@ class ReplyWindow:
             self._owns_root = False
             self._hidden_root = None  # type: ignore[assignment]
 
-        w = int(320 * self._ui_scale)
-        h = int(440 * self._ui_scale)
+        w = int(560 * self._ui_scale)
+        h = int(500 * self._ui_scale)
 
         top.title("Sandman")
         top.geometry(f"{w}x{h}")
@@ -164,22 +88,38 @@ class ReplyWindow:
         top.attributes("-topmost", True)
         top.protocol("WM_DELETE_WINDOW", self.close)
 
-        # Position bottom-right of the primary screen.
+        # Position center-screen.
         top.update_idletasks()
         sw = top.winfo_screenwidth()
         sh = top.winfo_screenheight()
-        x = max(0, sw - w - 20)
-        y = max(0, sh - h - 60)
+        x = max(0, (sw - w) // 2)
+        y = max(0, (sh - h) // 2)
         top.geometry(f"{w}x{h}+{x}+{y}")
 
         # Container so we can rely on grid for a clean bottom-entry layout.
         container = ttk.Frame(top)
         container.pack(fill="both", expand=True)
-        container.rowconfigure(0, weight=1)
+        container.rowconfigure(1, weight=1)
         container.columnconfigure(0, weight=1)
 
+        header = ttk.Frame(container)
+        header.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
+        header.columnconfigure(0, weight=1)
+        title = ttk.Label(
+            header,
+            text="It's wind-down time 🌙",
+            font=("Segoe UI", int(15 * self._ui_scale), "bold"),
+        )
+        title.grid(row=0, column=0, sticky="w")
+        bed_btn = ttk.Button(
+            header,
+            text="I'm going to bed",
+            command=self._bed_clicked,
+        )
+        bed_btn.grid(row=0, column=1, sticky="e")
+
         transcript_frame = ttk.Frame(container)
-        transcript_frame.grid(row=0, column=0, sticky="nsew", padx=6, pady=(6, 0))
+        transcript_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(8, 0))
         transcript_frame.rowconfigure(0, weight=1)
         transcript_frame.columnconfigure(0, weight=1)
 
@@ -187,7 +127,7 @@ class ReplyWindow:
             transcript_frame,
             wrap="word",
             state="disabled",
-            bg="#1e1e2f",
+            bg="#111827",
             fg="#e6e6f0",
             padx=8,
             pady=8,
@@ -198,13 +138,13 @@ class ReplyWindow:
         transcript.tag_configure(
             "sandman",
             justify="left",
-            foreground="#a0c4ff",
+            foreground="#9ec5fe",
             spacing3=4,
         )
         transcript.tag_configure(
             "user",
             justify="right",
-            foreground="#ffd6a5",
+            foreground="#f8c4b4",
             spacing3=4,
         )
         transcript.grid(row=0, column=0, sticky="nsew")
@@ -216,7 +156,7 @@ class ReplyWindow:
         transcript.configure(yscrollcommand=scrollbar.set)
 
         entry_frame = ttk.Frame(container)
-        entry_frame.grid(row=1, column=0, sticky="ew", padx=6, pady=6)
+        entry_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=10)
         entry_frame.columnconfigure(0, weight=1)
         entry = ttk.Entry(entry_frame)
         entry.grid(row=0, column=0, sticky="ew")
@@ -292,6 +232,12 @@ class ReplyWindow:
             self._on_user_reply(text)
         except Exception:
             log.exception("on_user_reply handler failed")
+
+    def _bed_clicked(self) -> None:
+        try:
+            self._on_bed_clicked()
+        except Exception:
+            log.exception("on_bed_clicked handler failed")
 
     def _append(self, role: str, message: str) -> None:
         if self._transcript is None:
