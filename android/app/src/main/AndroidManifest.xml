@@ -20,6 +20,9 @@
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
 
+    <!-- Read phone call state to suppress nudges during calls -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+
     <application
         android:name=".SandmanApp"
         android:allowBackup="true"
