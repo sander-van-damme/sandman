@@ -121,7 +121,7 @@ jobs:
 
       - name: Build APK
         working-directory: android
-        run: ./gradlew ${{ steps.variant.outputs.task }}
+        run: gradle ${{ steps.variant.outputs.task }}
 
       - name: Rename APK for release
         run: |
