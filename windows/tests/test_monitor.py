@@ -59,6 +59,7 @@ def _make_monitor(
         llm_client=llm,
         on_nudge=nudge_cb,
         on_status=status_cb,
+        is_alert_open=lambda: False,
     )
     return monitor, nudge_cb, status_cb
 
@@ -189,3 +190,38 @@ def test_notification_response_is_forwarded_to_next_llm_request(config: Config) 
     llm_history = m.llm_client.classify_and_nudge.call_args.kwargs["history"]
     assert llm_history.messages[0]["role"] == "user"
     assert "Quick notification response: I'm going to bed." in llm_history.messages[0]["content"]
+
+
+def test_skips_when_popup_is_open(config: Config) -> None:
+    m, nudge_cb, _ = _make_monitor(config)
+    m.is_alert_open = lambda: True
+
+    with patch("windows.monitor.datetime") as mdt:
+        mdt.now.return_value = _ACTIVE_NOW
+        mdt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        m._tick()
+
+    nudge_cb.assert_not_called()
+    assert m.status.message == "Nudge popup open"
+
+
+def test_extension_is_capped_by_schedule_end(config: Config) -> None:
+    m, _nudge_cb, _ = _make_monitor(config)
+    m._session_date = _ACTIVE_NOW.strftime("%Y-%m-%d")
+    m.status.nudge_count = 2
+    m.llm_client.classify_and_nudge.return_value = NudgeDecision(
+        activity_type="entertainment",
+        should_nudge=True,
+        reason="agreed extension",
+        message="Okay, one short extension.",
+        extension_minutes=300,  # should cap to 02:00
+    )
+
+    with patch("windows.monitor.datetime") as mdt:
+        mdt.now.return_value = _ACTIVE_NOW
+        mdt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        m.handle_user_reply("Can I get one more hour?")
+
+    assert m._paused_until is not None
+    assert m._paused_until.hour == 2
+    assert m._paused_until.minute == 0

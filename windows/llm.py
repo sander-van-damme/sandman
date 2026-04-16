@@ -46,6 +46,8 @@ conversationally while still guiding them toward bed.
 5. Treat quick notification actions as meaningful commitment signals. If the \
 history says they clicked "I'm going to bed" multiple times but stayed active, \
 gently call out the pattern and ask for one concrete follow-through step now.
+6. If the user asks for an extension, you may grant one only when justified. \
+When granting, include "extension_minutes" as a positive integer.
 
 Respond in JSON format:
 {{
@@ -53,7 +55,8 @@ Respond in JSON format:
   "should_nudge": true/false,
   "reason": "brief explanation of why or why not",
   "message": "the nudge message to show (only if should_nudge is true)",
-  "follow_up_question": "optional question to engage the user, e.g. 'What's keeping you going right now?'"
+  "follow_up_question": "optional question to engage the user, e.g. 'What's keeping you going right now?'",
+  "extension_minutes": 0
 }}
 """
 
@@ -75,6 +78,7 @@ class NudgeDecision:
     reason: str
     message: str
     follow_up_question: str | None = None
+    extension_minutes: int | None = None
     raw: dict[str, Any] | None = None
 
     @classmethod
@@ -100,12 +104,12 @@ class ConversationHistory:
     """
 
     messages: list[dict[str, str]] = field(default_factory=list)
-    max_messages: int = 20
+    max_messages: int | None = None
     session_started_at: datetime | None = None
 
     def add(self, role: str, content: str) -> None:
         self.messages.append({"role": role, "content": content})
-        if len(self.messages) > self.max_messages:
+        if self.max_messages is not None and len(self.messages) > self.max_messages:
             # Keep the most recent messages.
             self.messages = self.messages[-self.max_messages :]
 
@@ -326,5 +330,16 @@ class LLMClient:
             reason=str(raw.get("reason", "")),
             message=str(raw.get("message", "") or ""),
             follow_up_question=raw.get("follow_up_question") or None,
+            extension_minutes=LLMClient._parse_extension_minutes(raw.get("extension_minutes")),
             raw=raw,
         )
+
+    @staticmethod
+    def _parse_extension_minutes(value: Any) -> int | None:
+        if value is None:
+            return None
+        try:
+            minutes = int(value)
+        except (TypeError, ValueError):
+            return None
+        return minutes if minutes > 0 else None

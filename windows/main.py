@@ -23,11 +23,7 @@ from .config import Config
 from .llm import LLMClient, NudgeDecision
 from .monitor import Monitor, MonitorStatus
 from .notifications import (
-    ACTION_BED,
-    ACTION_SNOOZE,
     ReplyWindow,
-    ToastAction,
-    show_nudge_toast,
 )
 from .settings import SettingsWindow
 from .tray import SandmanTray
@@ -83,13 +79,11 @@ class SandmanApp:
             llm_client=self.llm_client,
             on_nudge=self._on_nudge,
             on_status=self._on_status,
+            is_alert_open=lambda: self._reply_window is not None and self._reply_window._root is not None,
         )
 
         self.tray = SandmanTray(
             on_open_settings=lambda: self._ui_call(self._open_settings),
-            on_pause_30=lambda: self.monitor.pause_for(30),
-            on_pause_tomorrow=self.monitor.pause_until_tomorrow,
-            on_resume=self.monitor.resume,
             on_quit=self._on_quit,
         )
 
@@ -217,12 +211,8 @@ class SandmanApp:
         if self._reply_window is not None:
             self._reply_window.queue_sandman_message(decision.message)
 
-        log.info("Showing toast notification")
-        show_nudge_toast(
-            decision.message,
-            title="Sandman",
-            on_action=self._on_toast_action,
-        )
+        log.info("Opening center popup notification")
+        self._ui_call(lambda: self._open_chat(decision.message))
 
         # Escalation overlay at 7+ nudges.
         if (
@@ -231,15 +221,6 @@ class SandmanApp:
         ):
             log.info("Showing escalation overlay (nudge_count=%d)", self.monitor.status.nudge_count)
             self._ui_call(lambda: self._show_escalation_overlay(decision.message))
-
-    def _on_toast_action(self, action: ToastAction) -> None:
-        log.info("Toast action: %s", action.action)
-        if action.action == ACTION_BED:
-            self.monitor.record_notification_response("I'm going to bed")
-            self.monitor.pause_until_tomorrow()
-        elif action.action == ACTION_SNOOZE:
-            self.monitor.record_notification_response("5 more minutes")
-            self.monitor.pause_for(5)
 
     # ---- UI openers -----------------------------------------------------
 
@@ -278,20 +259,30 @@ class SandmanApp:
         self._settings_window = window
         window.open()
 
-    def _open_chat(self) -> None:
+    def _open_chat(self, initial_message: str | None = None) -> None:
         if self._reply_window is None:
             self._reply_window = ReplyWindow(
                 on_user_reply=self._handle_chat_reply,
+                on_bed_clicked=self._handle_bed_clicked,
                 parent=self._tk_root,
                 ui_scale=self._ui_scale,
             )
         self._reply_window.open(
             initial_sandman_message=(
-                "Hey — I'm here. Tell me what's keeping you up."
-                if not self._reply_window._incoming.qsize()
-                else None
+                initial_message
+                or (
+                    "Hey — I'm here. Tell me what's keeping you up."
+                    if not self._reply_window._incoming.qsize()
+                    else None
+                )
             )
         )
+
+    def _handle_bed_clicked(self) -> None:
+        self.monitor.record_notification_response("I'm going to bed")
+        self.monitor.pause_until_tomorrow()
+        if self._reply_window is not None:
+            self._reply_window.close()
 
     def _handle_chat_reply(self, text: str) -> None:
         log.info("User reply: %s", text)

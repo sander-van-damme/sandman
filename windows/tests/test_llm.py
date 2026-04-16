@@ -35,6 +35,7 @@ def test_parse_decision_valid_json() -> None:
             "reason": "late coding",
             "message": "Close the laptop.",
             "follow_up_question": "What are you trying to finish?",
+            "extension_minutes": 45,
         }
     )
     decision = LLMClient._parse_decision(content, nudge_count=0)
@@ -42,6 +43,7 @@ def test_parse_decision_valid_json() -> None:
     assert decision.activity_type == "programming"
     assert decision.message == "Close the laptop."
     assert decision.follow_up_question == "What are you trying to finish?"
+    assert decision.extension_minutes == 45
 
 
 def test_parse_decision_invalid_json_falls_back() -> None:
