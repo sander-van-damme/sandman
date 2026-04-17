@@ -34,7 +34,7 @@ object ActivityWatcher {
 
     /**
      * Returns the app currently (or most recently) in the foreground by
-     * querying UsageEvents over the last 10 seconds.
+     * querying UsageEvents over the last 5 minutes.
      *
      * Returns null if the permission is not granted or no event was found.
      */
@@ -46,7 +46,7 @@ object ActivityWatcher {
 
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val now = System.currentTimeMillis()
-        val events = usm.queryEvents(now - 2 * 60 * 60 * 1000L, now)
+        val events = usm.queryEvents(now - 5 * 60 * 1000L, now)
 
         var latestPackage: String? = null
         val event = UsageEvents.Event()
