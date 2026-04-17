@@ -2,10 +2,12 @@ package com.sandman.android.service
 
 import android.app.Service
 import android.content.Intent
+import android.os.BatteryManager
 import android.os.IBinder
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.sandman.android.data.AppPreferences
+import com.sandman.android.data.Defaults
 import com.sandman.android.data.isWithinActiveWindow
 import com.sandman.android.data.minutesPastBedtime
 import com.sandman.android.llm.LlmClient
@@ -15,13 +17,18 @@ import com.sandman.android.notifications.NudgeNotifier
 import com.sandman.android.notifications.STATUS_NOTIF_ID
 import com.sandman.android.usage.ActivityWatcher
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 private const val TAG = "NudgeService"
 private const val POLL_INTERVAL_MS = 30_000L
+private const val POLL_INTERVAL_SCREEN_OFF_MS = 60_000L
+private const val NO_NUDGE_CACHE_TTL_MS = 5 * 60 * 1_000L
+private const val BATTERY_CRITICAL_PERCENT = 10
 
 /**
  * Foreground service that owns the 30-second polling loop — the Android
@@ -45,6 +52,21 @@ class NudgeService : Service() {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private lateinit var prefs: AppPreferences
 
+    // Preference cache — started eagerly, read as .value in tick() to avoid
+    // per-tick DataStore suspensions (~8 reads × 2 880 ticks/day eliminated)
+    private lateinit var cachedApiKey: StateFlow<String>
+    private lateinit var cachedModel: StateFlow<String>
+    private lateinit var cachedActiveFrom: StateFlow<String>
+    private lateinit var cachedActiveUntil: StateFlow<String>
+    private lateinit var cachedActiveDays: StateFlow<String>
+    private lateinit var cachedWakeTime: StateFlow<String>
+    private lateinit var cachedMinInterval: StateFlow<Int>
+    private lateinit var cachedEscalation: StateFlow<Boolean>
+    private lateinit var cachedNudgeStyle: StateFlow<String>
+
+    // Per-activity no-nudge cache: avoids redundant LLM calls for the same app
+    private val noNudgeCache = mutableMapOf<String, Long>()
+
     // Monitor state (mirrors Python Monitor fields)
     private var nudgeCount = 0
     private var lastNudgeAtMs: Long? = null
@@ -62,6 +84,15 @@ class NudgeService : Service() {
     override fun onCreate() {
         super.onCreate()
         prefs = AppPreferences(applicationContext)
+        cachedApiKey = prefs.apiKey.stateIn(scope, SharingStarted.Eagerly, "")
+        cachedModel = prefs.model.stateIn(scope, SharingStarted.Eagerly, Defaults.MODEL)
+        cachedActiveFrom = prefs.activeFrom.stateIn(scope, SharingStarted.Eagerly, Defaults.ACTIVE_FROM)
+        cachedActiveUntil = prefs.activeUntil.stateIn(scope, SharingStarted.Eagerly, Defaults.ACTIVE_UNTIL)
+        cachedActiveDays = prefs.activeDays.stateIn(scope, SharingStarted.Eagerly, Defaults.ACTIVE_DAYS)
+        cachedWakeTime = prefs.wakeTime.stateIn(scope, SharingStarted.Eagerly, Defaults.WAKE_TIME)
+        cachedMinInterval = prefs.minIntervalSeconds.stateIn(scope, SharingStarted.Eagerly, Defaults.MIN_INTERVAL_SECONDS)
+        cachedEscalation = prefs.escalationEnabled.stateIn(scope, SharingStarted.Eagerly, Defaults.ESCALATION_ENABLED)
+        cachedNudgeStyle = prefs.nudgeStyle.stateIn(scope, SharingStarted.Eagerly, Defaults.NUDGE_STYLE)
         NudgeNotifier.createChannels(applicationContext)
         startForeground(
             STATUS_NOTIF_ID,
@@ -142,7 +173,7 @@ class NudgeService : Service() {
                     Log.e(TAG, "Tick failed", e)
                     emitStatus(MonitorState.ERROR, "Internal error")
                 }
-                delay(POLL_INTERVAL_MS)
+                delay(nextPollDelayMs())
             }
         }
     }
@@ -154,7 +185,7 @@ class NudgeService : Service() {
         val now = LocalDateTime.now()
 
         // 1) Configuration check
-        val apiKey = prefs.apiKey.first()
+        val apiKey = cachedApiKey.value
         if (apiKey.isBlank()) {
             emitStatus(MonitorState.ERROR, "OpenAI API key not set")
             return
@@ -178,10 +209,16 @@ class NudgeService : Service() {
             }
         }
 
+        // 3b) Battery critical — skip LLM calls to preserve remaining charge
+        if (isBatteryCritical()) {
+            emitStatus(MonitorState.IDLE, "Battery critical — paused")
+            return
+        }
+
         // 4) Active window check (mirrors is_within_active_window)
-        val activeFrom = prefs.activeFrom.first()
-        val activeUntil = prefs.activeUntil.first()
-        val activeDays = prefs.activeDays.first()
+        val activeFrom = cachedActiveFrom.value
+        val activeUntil = cachedActiveUntil.value
+        val activeDays = cachedActiveDays.value
         val nowDayOfWeek = (now.dayOfWeek.value - 1) // 0=Mon…6=Sun, matching Python
         if (!isWithinActiveWindow(now.toLocalTime(), nowDayOfWeek, activeFrom, activeUntil, activeDays)) {
             maybeEndSession()
@@ -207,7 +244,7 @@ class NudgeService : Service() {
         }
 
         // 7) Rate limit
-        val minIntervalMs = prefs.minIntervalSeconds.first() * 1_000L
+        val minIntervalMs = cachedMinInterval.value * 1_000L
         val lastNudge = lastNudgeAtMs
         if (lastNudge != null && System.currentTimeMillis() - lastNudge < minIntervalMs) {
             emitStatus(MonitorState.NUDGING, "Rate limited")
@@ -236,9 +273,15 @@ class NudgeService : Service() {
             }
         }
 
+        // 9b) No-nudge activity cache — skip LLM if we recently decided not to nudge this app
+        if ((noNudgeCache[activityKey] ?: 0L) > System.currentTimeMillis() - NO_NUDGE_CACHE_TTL_MS) {
+            emitStatus(MonitorState.ACTIVE, "Watching (${app.appLabel})")
+            return
+        }
+
         // 10) Ask the LLM
-        val wakeTime = prefs.wakeTime.first()
-        val nudgeStyle = prefs.nudgeStyle.first()
+        val wakeTime = cachedWakeTime.value
+        val nudgeStyle = cachedNudgeStyle.value
         val minutesPast = minutesPastBedtime(now.hour, now.minute, activeFrom)
 
         val systemPrompt = LlmClient.buildSystemPrompt()
@@ -261,6 +304,7 @@ class NudgeService : Service() {
         )
 
         if (!decision.shouldNudge || decision.message.isBlank()) {
+            noNudgeCache[activityKey] = System.currentTimeMillis()
             Log.d(TAG, "LLM declined to nudge: ${decision.reason}")
             emitStatus(MonitorState.ACTIVE, "Watching (${decision.activityType})")
             return
@@ -275,7 +319,7 @@ class NudgeService : Service() {
 
         emitStatus(MonitorState.NUDGING, "Nudge #$nudgeCount")
 
-        val escalation = prefs.escalationEnabled.first()
+        val escalation = cachedEscalation.value
         NudgeNotifier.showNudge(applicationContext, decision.message, nudgeCount, escalation)
 
     }
@@ -283,16 +327,16 @@ class NudgeService : Service() {
     // ---- reply handling --------------------------------------------------
 
     private suspend fun handleUserReply(text: String) {
-        val apiKey = prefs.apiKey.first()
+        val apiKey = cachedApiKey.value
         if (apiKey.isBlank()) return
         ensureLlmClient(apiKey)
 
         val app = ActivityWatcher.getForegroundApp(applicationContext)
         val appName = app?.appLabel ?: "unknown"
         val now = LocalDateTime.now()
-        val activeFrom = prefs.activeFrom.first()
-        val wakeTime = prefs.wakeTime.first()
-        val nudgeStyle = prefs.nudgeStyle.first()
+        val activeFrom = cachedActiveFrom.value
+        val wakeTime = cachedWakeTime.value
+        val nudgeStyle = cachedNudgeStyle.value
         val minutesPast = minutesPastBedtime(now.hour, now.minute, activeFrom)
 
         val systemPrompt = LlmClient.buildSystemPrompt()
@@ -319,13 +363,13 @@ class NudgeService : Service() {
         if (decision.message.isNotBlank()) {
             history.add("assistant", decision.message)
 
-            val escalation = prefs.escalationEnabled.first()
+            val escalation = cachedEscalation.value
             NudgeNotifier.showNudge(applicationContext, decision.message, nudgeCount, escalation)
         }
 
         val requestedExtension = decision.extensionMinutes
         if (requestedExtension != null) {
-            val maxAllowed = computeRemainingActiveWindowMinutes(now, activeFrom, prefs.activeUntil.first())
+            val maxAllowed = computeRemainingActiveWindowMinutes(now, activeFrom, cachedActiveUntil.value)
             val granted = minOf(requestedExtension, maxAllowed).coerceAtLeast(0)
             if (granted > 0) {
                 pausedUntilMs = System.currentTimeMillis() + granted * 60_000L
@@ -336,11 +380,10 @@ class NudgeService : Service() {
 
     // ---- helpers ---------------------------------------------------------
 
-    private suspend fun ensureLlmClient(apiKey: String) {
+    private fun ensureLlmClient(apiKey: String) {
         val existing = llmClient
         if (existing == null || existing.apiKey != apiKey) {
-            val model = prefs.model.first()
-            llmClient = LlmClient(apiKey, model)
+            llmClient = LlmClient(apiKey, cachedModel.value)
         }
     }
 
@@ -358,6 +401,7 @@ class NudgeService : Service() {
             nudgeCount = 0
             lastNudgeAtMs = null
             lastNudgeActivityKey = null
+            noNudgeCache.clear()
             history.startSession()
         }
     }
@@ -370,6 +414,7 @@ class NudgeService : Service() {
         nudgeCount = 0
         lastNudgeAtMs = null
         lastNudgeActivityKey = null
+        noNudgeCache.clear()
         history.clear()
     }
 
@@ -396,5 +441,17 @@ class NudgeService : Service() {
 
     private fun emitStatus(state: MonitorState, message: String) {
         NudgeNotifier.updateStatus(applicationContext, state, message)
+    }
+
+    private fun nextPollDelayMs(): Long {
+        if (!ActivityWatcher.isScreenOn(applicationContext)) return POLL_INTERVAL_SCREEN_OFF_MS
+        if (ActivityWatcher.isDeviceLocked(applicationContext)) return POLL_INTERVAL_SCREEN_OFF_MS
+        return POLL_INTERVAL_MS
+    }
+
+    private fun isBatteryCritical(): Boolean {
+        val bm = getSystemService(BatteryManager::class.java)
+        val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        return level in 1..BATTERY_CRITICAL_PERCENT
     }
 }
