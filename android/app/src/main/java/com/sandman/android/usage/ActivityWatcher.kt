@@ -1,5 +1,6 @@
 package com.sandman.android.usage
 
+import android.Manifest
 import android.app.AppOpsManager
 import android.app.KeyguardManager
 import android.app.usage.UsageEvents
@@ -9,6 +10,7 @@ import android.content.pm.PackageManager
 import android.os.PowerManager
 import android.telephony.TelephonyManager
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.sandman.android.model.ForegroundApp
 
 private const val TAG = "ActivityWatcher"
@@ -85,6 +87,11 @@ object ActivityWatcher {
 
     /** Returns true if a phone call (incoming, outgoing, or ongoing) is active. */
     fun isInCall(context: Context): Boolean {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            return false
+        }
         val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
         return tm.callState != TelephonyManager.CALL_STATE_IDLE
     }
